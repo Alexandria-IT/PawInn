@@ -1,0 +1,22 @@
+# Local Jenkins for PawInn CI/CD.
+#   docker compose -f infra/jenkins/compose.yaml up -d --build
+#   open http://localhost:8081
+name: pawinn-jenkins
+
+services:
+  jenkins:
+    build: .
+    # root + docker.sock = Jenkins can run Docker on this computer.
+    # Fine for a local demo; do not expose this Jenkins to the internet.
+    user: root
+    ports:
+      - "8081:8080"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+volumes:
+  jenkins_home:

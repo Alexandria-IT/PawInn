@@ -1,7 +1,13 @@
-# One shared application database. Add API services as teammates implement them.
+# PawInn local stack: postgres + frontend.  Website: http://localhost:8080
+#   docker compose up -d --build --wait
+# Jenkins deploys this same file. No bind mounts: SQL is baked into the database
+# image, so it also works when Jenkins (in a container) drives Docker on this machine.
+
 services:
   postgres:
-    image: postgres:17-alpine
+    build: ./database
+    image: pawinn/postgres:local
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-pawinn}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copy .env.example to .env and set POSTGRES_PASSWORD}
@@ -10,13 +16,25 @@ services:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "psql -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\" -Atqc 'SELECT 1' > /dev/null"]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  frontend:
+    build: ./frontend
+    image: pawinn/frontend:local
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
 volumes:
   postgres_data:
