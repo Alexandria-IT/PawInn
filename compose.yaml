@@ -1,7 +1,11 @@
 # PawInn application stack. PostgreSQL data stays in its named volume.
 services:
   postgres:
-    image: postgres:17-alpine
+    # SQL from ./database is baked into this image (no bind mount), so the stack also
+    # works when Jenkins runs in a container and drives Docker through docker.sock.
+    # After changing SQL: rebuild, and reset the volume (docker compose -p pawinn down -v).
+    image: ${PAWINN_IMAGE_PREFIX:-pawinn}-postgres:${PAWINN_TAG:-local}
+    build: ./database
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-pawinn}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Copy .env.example to .env and set POSTGRES_PASSWORD}
@@ -11,7 +15,6 @@ services:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "psql -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\" -Atqc 'SELECT 1' > /dev/null"]
       interval: 5s

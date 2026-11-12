@@ -18,7 +18,7 @@ cleanup() {
 trap cleanup EXIT
 compose up -d --build --wait postgres account room booking frontend
 compose exec -T postgres psql -U pawinn_test -d pawinn_test -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/tests/verify.sql
-compose run --rm --no-deps verify
+compose run --rm --no-deps --build verify
 # Confirm that a completed write survives both database and service restarts.
 compose restart postgres booking
 compose up -d --wait --no-deps postgres booking

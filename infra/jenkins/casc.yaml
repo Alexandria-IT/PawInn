@@ -1,0 +1,39 @@
+# Jenkins Configuration as Code for PawInn.
+# Applied every time Jenkins starts: creates the admin user and the "pawinn" job.
+# Press "Build Now" once; after that Jenkins polls GitHub every 2 minutes by itself.
+# Values can be changed in infra/jenkins/compose.yaml (environment).
+
+jenkins:
+  systemMessage: "PawInn CI/CD - job 'pawinn' is created automatically from infra/jenkins/casc.yaml"
+  numExecutors: 2
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_ID:-admin}"
+          password: "${JENKINS_ADMIN_PASSWORD:-pawinn}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+unclassified:
+  location:
+    url: "http://localhost:8081/"
+
+jobs:
+  - script: |
+      pipelineJob('pawinn') {
+        description('PawInn CI/CD. Created automatically by infra/jenkins/casc.yaml')
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote { url('${PAWINN_REPO_URL:-https://github.com/Alexandria-IT/PawInn.git}') }
+                branch('${PAWINN_BRANCH:-*/main}')
+              }
+            }
+            scriptPath('Jenkinsfile')
+            lightweight(true)
+          }
+        }
+      }
