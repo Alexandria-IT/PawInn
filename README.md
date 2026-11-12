@@ -4,52 +4,24 @@ PawInn is a pet hotel booking portal for dogs and cats. Customers can check room
 
 **Payments, reschedule adjustments, and refunds are simulated.** PawInn does not collect card details or charge money.
 
-## Start PawInn with Docker
-
-You'll need **Git** and **Docker Compose**. Start Docker Desktop on Windows or macOS, or Docker Engine on Linux. You don't need to install Node.js or PostgreSQL separately.
-
-1. Clone the repository:
-
-   ```sh
-   git clone https://github.com/Alexandria-IT/PawInn.git
-   cd PawInn
-   ```
-
-2. Copy `.env.example` to `.env`: run `Copy-Item .env.example .env` in PowerShell or `cp .env.example .env` on macOS/Linux. Open `.env` and set:
-   - `POSTGRES_PASSWORD`: a password for your local database.
-   - `JWT_SECRET`: a unique signing secret. Run the command below and paste its output as the value.
-
-   ```sh
-   docker run --rm node:24-alpine node -p "require('node:crypto').randomBytes(32).toString('hex')"
-   ```
-
-   Keep `PAWINN_SEED_DEMO=false` for regular use and keep `.env` out of Git.
-
-   For demo `PAWINN_SEED_DEMO=true`, it has seed users provided with 2 customers account and 1 staff account 
-
-4. Build and start the app:
-
-   ```sh
-   docker compose up -d --build --wait
-   docker compose ps
-   ```
-
-5. Open [PawInn at localhost:8080](http://localhost:8080). On first startup, PawInn creates its database tables and adds **15 rooms** (five per room type).
-
 ## Run inside the DevTools course container
 
-The course image runs its own Docker engine. Use SSH port forwarding to open PawInn in your computer’s browser. [DevTools course image](https://github.com/Tuchsanai/DevTools/blob/main/00_Tool/00_Reference/readme.md)
+**Required for grading.** Run PawInn’s Docker Compose stack inside `tuchsanai/devtools:2569_1`. The course container runs its own Docker engine. Your computer connects to PawInn through the SSH tunnel below. [DevTools course image](https://github.com/Tuchsanai/DevTools/blob/main/00_Tool/00_Reference/readme.md)
 
-**On your computer**, start the course container with Docker Desktop running:
+### 1. Start and connect to the course container
+
+Run these commands on your computer with Docker running:
 
 ```powershell
 docker run -dit --name devtools --privileged -p 127.0.0.1:2222:22 tuchsanai/devtools:2569_1
 ssh -o ExitOnForwardFailure=yes -p 2222 -L 127.0.0.1:8082:127.0.0.1:8080 root@127.0.0.1
 ```
 
-If you already created `devtools` with SSH mapped to port `2222`, skip `docker run`. If the container is stopped, run `docker start devtools` before connecting. Use the SSH password from the course guide.
+If `devtools` already exists with SSH mapped to port `2222`, skip `docker run`. If it is stopped, run `docker start devtools` before connecting. Use the SSH password from the course guide.
 
-**Inside the SSH session**, clone PawInn and create its local settings:
+### 2. Clone PawInn and configure the environment
+
+Run these commands **inside the SSH session**:
 
 ```sh
 docker info --format '{{.ServerVersion}}'
@@ -65,29 +37,42 @@ if [ ! -f .env ]; then
     -e "s/^JWT_SECRET=.*/JWT_SECRET=$jwt_secret/" .env
   unset db_password jwt_secret
 fi
+```
 
+If you already cloned PawInn inside the course container, enter that directory and run the `.env` setup there. The SSH command assumes `FRONTEND_PORT=8080` inside the course container.
+
+### 3. Choose whether to load demo data
+
+Before the first `docker compose up`, open `.env` and choose a value for `PAWINN_SEED_DEMO`:
+
+- **`false` (default)** starts with 15 rooms and an empty user table. Customers can register in the app. Follow the [Admin and Staff setup](#set-up-admin-and-staff-access) to create those accounts.
+- **`true`** also loads sample users, pets, and bookings. Use this for grading if you want accounts and bookings ready to try.
+
+The demo accounts all use the password **`PawInnDemo123!`**.
+
+| Role | Name | Sign-in email |
+| --- | --- | --- |
+| Customer | Jamie Parker | `jamie@pawinn.demo` |
+| Customer | Alex Morgan | `alex@pawinn.demo` |
+| Staff | PawInn Team | `team@pawinn.demo` |
+
+Create the first **Admin** separately using the [setup below](#set-up-admin-and-staff-access). PostgreSQL loads the demo accounts only when it initializes a **fresh database volume**. Changing the flag and restarting an existing database won’t add them. [Seed accounts](database/account/seed.sql) · [Database setup](database/README.md)
+
+### 4. Start PawInn and open it on your computer
+
+In the SSH session, run:
+
+```sh
 docker compose up -d --build --wait
 docker compose ps
 curl -fsS http://127.0.0.1:8080/api/room-types
 ```
 
-If PawInn is already cloned, enter that directory and run the setup from there. The SSH command forwards to PawInn’s default `FRONTEND_PORT=8080` inside the course container. If you changed that value, use the same port in the last part of `-L` and in the `curl` URL.
-
-Keep the SSH session open and visit [PawInn at 127.0.0.1:8082](http://127.0.0.1:8082) in your computer’s browser. If `8082` is busy, change the first port in `-L` and use that port in the browser. If `curl` fails inside the course container, run `docker compose ps -a` and `docker compose logs --tail=100` there to check startup.
+Keep the SSH session open and visit [PawInn at 127.0.0.1:8082](http://127.0.0.1:8082) in your computer’s browser. If you change `FRONTEND_PORT`, update the last port in the SSH `-L` option and the `curl` URL to match. If your computer’s port `8082` is busy, change the first port in `-L` and use that port in your browser.
 
 ## Set up Admin and Staff access
 
-The customer flow works without an Admin account. To try the staff dashboard, first create one Admin for your database. Use an unused email address and a password of at least 12 characters (up to 72 bytes). Replace `admin@example.com` with your email.
-
-**Windows (PowerShell 7):**
-
-```powershell
-$adminPassword = Read-Host "New PawInn Admin password" -MaskInput
-$adminPassword | docker compose exec -T account node bootstrap-admin.js admin@example.com "PawInn Admin"
-Remove-Variable adminPassword
-```
-
-**macOS or Linux (Bash):**
+If you enabled demo data, you can sign in as Staff with the account above. For Admin access, run the following once **inside the course container**, from the PawInn directory. Replace `admin@example.com` with an unused email address and choose a password of at least 12 characters (up to 72 bytes).
 
 ```bash
 read -r -s -p 'New PawInn Admin password: ' admin_password
@@ -96,7 +81,7 @@ printf '%s\n' "$admin_password" | docker compose exec -T account node bootstrap-
 unset admin_password
 ```
 
-Sign in to PawInn with the new Admin account. In **Account administration**, choose **Create staff account**. Use that Staff account to sign in to the staff dashboard. Admins can also change staff access, suspend or reactivate accounts, and see changes in **Audit history**.
+Sign in to PawInn with the new Admin account. To add a staff member, choose **Create staff account** in **Account administration**, then sign in as that Staff user to open the dashboard. Admins can also change staff access, suspend or reactivate accounts, and see changes in **Audit history**.
 
 ## Try a booking
 
@@ -109,21 +94,27 @@ Sign in to PawInn with the new Admin account. In **Account administration**, cho
 
 - **Stop:** `docker compose stop`. **Start again:** `docker compose up -d --wait`. PostgreSQL keeps your data in its Docker volume. Avoid `docker compose down -v` if you want to keep your data.
 - **Check startup:** `docker compose ps -a` shows container status. Use `docker compose logs --tail=100` to see recent errors.
-- **Change ports:** If `8080` or `5432` is in use, change `FRONTEND_PORT` or `POSTGRES_PORT` in `.env`, then rerun the startup command. Open the app on the new frontend port.
+- **Change ports:** If `8080` or `5432` is busy inside the course container, change `FRONTEND_PORT` or `POSTGRES_PORT` in `.env` and rerun the startup command. If you changed `FRONTEND_PORT`, reconnect with the new destination port in the SSH command.
 
 ## Tests and Jenkins
 
-- **Run tests locally:** In a shell with Docker access, run `sh scripts/verify.sh` from the repository root. It builds an isolated test stack, checks the database, booking, care, and Admin flows, and removes its own test containers and database.
+- **Run tests:** Inside the course container, run `sh scripts/verify.sh` from the repository root. It builds an isolated test stack, checks the database, booking, care, and Admin flows, and removes its own test containers and database.
 - **GitHub Actions** runs the verification script on pushes and pull requests.
 - **Jenkins** checks out `main` by default, tests it, and deploys the tested images to the local Docker stack. Jenkins uses the same `.env` as a manual startup. Keep the original database settings when deploying over an existing PostgreSQL volume.
 
-To start Jenkins, set `JENKINS_ADMIN_PASSWORD` in `.env`, then run:
+To start Jenkins for the CI/CD demo, set `JENKINS_ADMIN_PASSWORD` in `.env`, then run this **inside the course container**:
 
 ```sh
 docker compose --env-file .env -f infra/jenkins/compose.yaml up -d --build
 ```
 
-Open [Jenkins at localhost:8081](http://localhost:8081), sign in as `admin` with that password, then choose **pawinn → Build Now**. See the [verification walkthrough](docs/local-demo.md) for the course demo.
+From a second terminal **on your computer**, forward the Jenkins port:
+
+```powershell
+ssh -N -o ExitOnForwardFailure=yes -p 2222 -L 127.0.0.1:8083:127.0.0.1:8081 root@127.0.0.1
+```
+
+Open [Jenkins at 127.0.0.1:8083](http://127.0.0.1:8083), sign in as `admin` with the password you set, then choose **pawinn → Build Now**. See the [verification walkthrough](docs/local-demo.md) for the course demo.
 
 ## Project layout
 
