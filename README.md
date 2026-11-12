@@ -1,6 +1,6 @@
 # PawInn
 
-PawInn is a pet hotel booking portal. The HTML/Tailwind/Alpine frontend talks to Account, Room and Booking Express services, backed by one shared PostgreSQL database. Customers manage pets, find available rooms, reserve stays, and request cancellation or rescheduling. Staff manage inventory, review requests, and send pet updates with text or photos. Customers can leave special-care instructions when booking and read staff updates on the **Pet Updates** page. Checkout and refunds are simulated and collect no payment details.
+PawInn is a pet hotel booking portal. The HTML/Tailwind/Alpine frontend talks to Account, Room and Booking Express services, backed by one shared PostgreSQL database. Customers manage pets, find available rooms, reserve stays, and request cancellation or rescheduling. Staff manage inventory, review requests, and record actual arrival, pickup, daily reports and individual care events. Customers can leave special-care instructions, read informal messages on **Pet Updates**, and open **Care during stay** from a booking for its dated history. Admins manage accounts and review account changes. Payments, reschedule adjustments and refunds are simulated.
 
 ## Run from scratch
 
@@ -35,28 +35,28 @@ docker compose ps
 
 Open [PawInn](http://localhost:8080) when the containers are healthy. The first startup creates the database tables and adds 15 rooms. To try the customer flow, choose **Sign in**, create an account, add a pet under **My Pets**, then choose a room and dates under **Our Rooms**.
 
-### 4. Create a staff account
+### 4. Create the first Admin and add staff
 
-Use an email that is new to PawInn and a password of at least 12 characters. Replace `staff@example.com` in the command you use.
+Use an email that is new to PawInn and a password of at least 12 characters. Replace `admin@example.com` in the command you use. Run this once on your installation; there is no default PawInn Admin password.
 
 Windows PowerShell 7
 
 ```powershell
-$staffPassword = Read-Host "New staff password" -MaskInput
-$staffPassword | docker compose exec -T account node staff.js staff@example.com "PawInn Staff"
-Remove-Variable staffPassword
+$adminPassword = Read-Host "New PawInn Admin password" -MaskInput
+$adminPassword | docker compose exec -T account node bootstrap-admin.js admin@example.com "PawInn Admin"
+Remove-Variable adminPassword
 ```
 
 macOS or Linux in Bash
 
 ```bash
-read -r -s -p 'New staff password: ' staff_password
+read -r -s -p 'New PawInn Admin password: ' admin_password
 printf '\n'
-printf '%s\n' "$staff_password" | docker compose exec -T account node staff.js staff@example.com "PawInn Staff"
-unset staff_password
+printf '%s\n' "$admin_password" | docker compose exec -T account node bootstrap-admin.js admin@example.com "PawInn Admin"
+unset admin_password
 ```
 
-Sign in with the new staff account to open the dashboard.
+Sign in with the Admin account to open **Account administration**. Create a Staff account there, then sign in with it to open the staff dashboard. For confirmed stays, use **All bookings → Stay care** to record attendance and care. Customers can open the same stay’s history from **My bookings → Details → Care during stay**.
 
 ### Stop, restart, and troubleshoot
 
@@ -87,9 +87,9 @@ The GitHub Actions workflow runs the same verification on pushes and PRs. Jenkin
 | Folder | Purpose |
 | --- | --- |
 | frontend | Customer/staff pages and Nginx routes |
-| services/account | Registration, sign-in and pets |
+| services/account | Registration, sign-in, pets, and Admin account management |
 | services/room | Catalog and inventory |
-| services/booking | Reservations, simulated checkout, cancellations and audit history |
+| services/booking | Reservations, simulated checkout and adjustments, change requests, stay care and audit history |
 | database | Schema, initial room inventory, and optional test fixtures |
 | scripts / tests | Disposable-stack verification |
 

@@ -114,6 +114,42 @@
                     >Held for <span x-text="countdown"></span
                   ></span>
                 </div>
+                <button type="button" x-ref="editBookingButton" class="btn btn-outline btn-sm mb-5"
+                  x-show="!editing" :disabled="busy || !seconds" @click="openEditor()">
+                  Edit booking details
+                </button>
+                <template x-if="editing">
+                  <form class="space-y-4" @submit.prevent="saveEditor()">
+                    <label>Pet
+                      <select x-model="editing.petId" @change="editing.roomTypeId=''" required>
+                        <template x-for="pet in $store.portal.pets" :key="pet.id">
+                          <option :value="pet.id" x-text="pet.name"></option>
+                        </template>
+                      </select>
+                    </label>
+                    <label>Room type
+                      <select x-model="editing.roomTypeId" required>
+                        <option value="">Choose a room</option>
+                        <template x-for="room in editRoomTypes" :key="room.id">
+                          <option :value="room.id" x-text="room.name"></option>
+                        </template>
+                      </select>
+                    </label>
+                    <div class="grid gap-3 sm:grid-cols-2">
+                      <label>Check-in <input type="date" x-model="editing.start" :min="today()" required /></label>
+                      <label>Check-out <input type="date" x-model="editing.end" :min="editing.start ? addDays(editing.start,1) : today()" required /></label>
+                    </div>
+                    <label>Special-care instructions (optional)
+                      <textarea x-model="editing.specialCare" rows="3" maxlength="2000"></textarea>
+                    </label>
+                    <p class="error" x-show="editError" x-text="editError" role="alert"></p>
+                    <div class="flex flex-wrap gap-3">
+                      <button type="button" class="btn btn-outline" :disabled="busy" @click="editing=null; $nextTick(()=>$refs.editBookingButton.focus())">Keep original details</button>
+                      <button class="btn btn-primary" :disabled="busy || !seconds || !editRoomTypes.length">Save and review</button>
+                    </div>
+                  </form>
+                </template>
+                <div x-show="!editing">
                 <div
                   class="rounded-2xl bg-[#e8e4ef] p-6 flex items-center justify-between gap-4"
                 >
@@ -197,6 +233,7 @@
                     Prices in Thai baht. No money is collected.
                   </p>
                 </form>
+                </div>
               </section>
               <aside class="card">
                 <img

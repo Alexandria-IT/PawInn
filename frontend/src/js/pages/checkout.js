@@ -1,4 +1,5 @@
-import { pay } from "../api/bookings.js";
+import { editHold, pay } from "../api/bookings.js";
+import { catalog } from "../api/rooms.js";
 // Create state for a simulated checkout.
 export default () => ({
   id: "",
@@ -10,6 +11,45 @@ export default () => ({
   timer: null,
   expiredRefresh: false,
   attempt: null,
+  editing: null,
+  roomTypes: [],
+  editError: "",
+  // Show only room types suited to the pet selected in the editor.
+  get editRoomTypes() {
+    const pet = this.$store.portal.pets.find((p) => p.id === this.editing?.petId);
+    return this.roomTypes.filter((room) => room.species === pet?.species);
+  },
+  // Load the editor with the existing hold, including optional care instructions.
+  async openEditor() {
+    if (!this.booking || this.busy) return;
+    this.error = "";
+    this.editError = "";
+    const { petId, roomTypeId, start, end, specialCare } = this.booking;
+    this.editing = { petId, roomTypeId, start, end, specialCare };
+    try {
+      this.roomTypes = await catalog();
+    } catch (error) {
+      this.editError = error.message;
+    }
+  },
+  // Keep the same booking reference and hold deadline when saving corrections.
+  async saveEditor() {
+    if (!this.editing || this.busy) return;
+    this.busy = true;
+    this.editError = "";
+    try {
+      await editHold(this.id, { ...this.editing });
+      this.accepted = false;
+      this.attempt = null;
+      this.editing = null;
+      await this.$store.portal.refresh();
+      this.$nextTick(() => this.$refs.editBookingButton?.focus());
+    } catch (error) {
+      this.editError = error.message;
+    } finally {
+      this.busy = false;
+    }
+  },
   // Read the booking ID and start the hold countdown.
   init() {
     this.id = new URLSearchParams(location.search).get("booking") || "";

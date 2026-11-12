@@ -127,7 +127,7 @@
             ></p>
             <p
               class="text-xs muted"
-              x-text="$store.portal.user?.role==='STAFF'?'Staff account':'Customer account'"
+              x-text="accountLabel"
             ></p>
           </div>
           <a
@@ -139,6 +139,9 @@
             href="/pages/staff-dashboard.html"
             x-show="$store.portal.user?.role==='STAFF'"
             >Staff dashboard</a
+          >
+          <a href="/pages/admin.html" x-show="$store.portal.user?.role==='ADMIN'"
+            >Admin portal</a
           >
           <button @click="signOut()">Sign out</button>
         </div>
@@ -190,6 +193,8 @@
       href="/pages/staff-dashboard.html"
       x-show="$store.portal.user?.role==='STAFF'"
       >Staff dashboard</a
+    ><a href="/pages/admin.html" x-show="$store.portal.user?.role==='ADMIN'"
+      >Admin portal</a
     ><button
       class="btn btn-outline mt-2"
       x-show="$store.portal.user"

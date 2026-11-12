@@ -8,6 +8,14 @@ export const listBookings = () => call("bookings");
 // Request a hold for the pet, room type, and dates.
 export const reserve = (petId, roomTypeId, start, end, specialCare) =>
   call("bookings", "POST", { petId, roomTypeId, start, end, specialCare });
+// Update the pet, room, dates, and notes on a held reservation.
+export const editHold = (id, details) =>
+  call("bookings/" + encodeURIComponent(id) + "/hold", "PATCH", details);
+// Fetch booking details for the current customer or staff member.
+export const getBooking = (id) => call("bookings/" + encodeURIComponent(id));
+// Quote a proposed date change before the customer agrees to it.
+export const quoteReschedule = (id, start, end) =>
+  call("bookings/" + encodeURIComponent(id) + "/reschedules/quote?" + new URLSearchParams({ start, end }));
 // Submit a simulated checkout attempt.
 export const pay = (id, outcome, attemptId) =>
   call("bookings/" + encodeURIComponent(id) + "/checkout", "POST", {
@@ -26,11 +34,12 @@ export const review = (id, approved, notes) =>
     notes,
   });
 // Request new dates for a confirmed booking.
-export const reschedule = (id, start, end, reason) =>
+export const reschedule = (id, start, end, reason, confirmedTotal) =>
   call("bookings/" + encodeURIComponent(id) + "/reschedules", "POST", {
     start,
     end,
     reason,
+    confirmedTotal,
   });
 // Submit the staff decision on the requested dates.
 export const reviewReschedule = (bookingId, requestId, approved, notes) =>
@@ -69,6 +78,3 @@ export function postPetUpdate(bookingId, message, photo) {
     form,
   );
 }
-// Mark an eligible stay complete.
-export const complete = (id) =>
-  call("bookings/" + encodeURIComponent(id) + "/complete", "PATCH");

@@ -1,5 +1,5 @@
-import { cancel, reschedule } from "../api/bookings.js";
-import { addDays, nights, today, toast } from "../helpers.js";
+import { cancel, quoteReschedule, reschedule } from "../api/bookings.js";
+import { today, toast } from "../helpers.js";
 // Create state and actions for My Bookings.
 export default () => ({
   tab: "upcoming",
@@ -8,6 +8,9 @@ export default () => ({
   requestTarget: null,
   requestKind: "cancel",
   newStart: "",
+  newEnd: "",
+  quote: null,
+  agreed: false,
   reason: "",
   error: "",
   busy: false,
@@ -43,24 +46,41 @@ export default () => ({
     return (
       b.status === "CONFIRMED" &&
       b.start > today() &&
+      !b.arrivedAt &&
       b.cancellation?.status !== "PENDING" &&
       b.reschedule?.status !== "PENDING"
     );
   },
-  // Preserve the length of the stay when the check-in moves.
-  get newEnd() {
-    if (!this.requestTarget || !this.newStart) return "";
-    return addDays(
-      this.newStart,
-      nights(this.requestTarget.start, this.requestTarget.end),
-    );
+  // Clear the quote and acknowledgement when either date changes.
+  clearQuote() {
+    this.quote = null;
+    this.agreed = false;
+  },
+  // Fetch the total for the dates currently entered on the form.
+  async reviewDates() {
+    if (this.busy || !this.newStart || !this.newEnd) return;
+    const { newStart, newEnd, requestTarget } = this;
+    this.busy = true;
+    this.error = "";
+    this.clearQuote();
+    try {
+      const quote = await quoteReschedule(requestTarget.id, newStart, newEnd);
+      if (this.requestTarget === requestTarget && this.newStart === newStart && this.newEnd === newEnd)
+        this.quote = quote;
+    } catch (error) {
+      this.error = error.message;
+    } finally {
+      this.busy = false;
+    }
   },
   // Open the shared booking change form.
   openRequest(booking, kind) {
     this.detail = null;
     this.requestTarget = booking;
     this.requestKind = kind;
-    this.newStart = "";
+    this.newStart = booking.start;
+    this.newEnd = booking.end;
+    this.clearQuote();
     this.reason = "";
     this.error = "";
   },
@@ -72,9 +92,13 @@ export default () => ({
     try {
       const bookingId = this.requestTarget.id;
       const moving = this.requestKind === "reschedule";
-      if (moving)
-        await reschedule(bookingId, this.newStart, this.newEnd, this.reason);
-      else await cancel(bookingId, this.reason);
+      if (moving) {
+        if (!this.quote || !this.agreed) {
+          this.error = "Review and confirm the updated total first.";
+          return;
+        }
+        await reschedule(bookingId, this.newStart, this.newEnd, this.reason, this.quote.newTotal);
+      } else await cancel(bookingId, this.reason);
       await this.$store.portal.refresh();
       this.requestTarget = null;
       toast(

@@ -1,18 +1,18 @@
 # Account service
 
-Account handles customer registration, bcrypt login, bearer tokens and pet profiles in PostgreSQL. Start it with the root Compose stack. Protected routes check the current role and ownership. Accounts reserved for fixtures cannot sign in unless the test stack enables fixtures.
+Account handles customer registration, sign-in, pet profiles, account administration and account audit history in PostgreSQL. Start it with the root Compose stack. Protected routes check the current role, account status and session version. Demo accounts can sign in when the verification stack enables fixtures.
 
-## Provision staff
+## Provision the administrator
 
-Create staff through the local operator CLI, never through public registration. In PowerShell, use a new staff email and choose a password of at least 12 characters:
+Once Account is running, use the local operator CLI with an unused administrator email and a password of 12 characters or more, up to 72 bytes. The command reads the password from standard input and accepts one successful bootstrap per database.
 
 ```powershell
-$staffPassword = Read-Host "New staff password" -MaskInput
-$staffPassword | docker compose exec -T account node staff.js staff@example.test "PawInn Staff"
-Remove-Variable staffPassword
+$adminPassword = Read-Host "New administrator password" -MaskInput
+$adminPassword | docker compose exec -T account node bootstrap-admin.js admin@example.test "PawInn Administrator"
+Remove-Variable adminPassword
 ```
 
-Use that email and password on the normal sign-in page. The CLI rejects an existing email. Account stores only the bcrypt hash.
+Sign in with the new account to open the Admin portal. Use **Create staff account** for new staff, or find an existing customer and choose **Grant staff access**. Account changes record the administrator, the affected account, the changed values and the time in **Audit history**. A role or status change ends the affected account's existing sessions.
 
 ## API tests
 

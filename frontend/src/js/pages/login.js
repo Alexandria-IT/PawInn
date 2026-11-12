@@ -19,6 +19,10 @@ export default () => ({
     try {
       const user = await login(email, password);
       this.password = "";
+      if (user.role === "ADMIN") {
+        location.href = "/pages/admin.html";
+        return;
+      }
       const fallback =
         user.role === "STAFF"
           ? "/pages/staff-dashboard.html"

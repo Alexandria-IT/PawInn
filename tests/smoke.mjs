@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { verifyCare } from "./requirements-care.mjs";
+import { verifyAdmin } from "./requirements-admin.mjs";
 
 const origin = process.env.BASE_URL;
 const write = process.env.PAWINN_TEST === "1";
@@ -253,6 +255,14 @@ async function verifyBookings() {
   );
   assert.equal(booking.specialCare, "Offer a quiet rest after each meal.");
   await postUpdate(booking.id, staff.token, "Too early", null, 409);
+  const holdPath = "/api/bookings/" + booking.id + "/hold";
+  const edited = { petId: p.pet.id, roomTypeId: booking.roomTypeId, start, end: days(offset + 3), specialCare: booking.specialCare };
+  await request(holdPath, "PATCH", edited, foreign.token, 404);
+  const updatedHold = await request(holdPath, "PATCH", edited, p.token);
+  assert.equal(updatedHold.id, booking.id);
+  assert.equal(updatedHold.expiresAt, booking.expiresAt);
+  assert.equal(updatedHold.total, booking.nightlyRate * 3);
+  await request(holdPath, "PATCH", { ...edited, end }, p.token);
   const checkoutPath = "/api/bookings/" + booking.id + "/checkout";
   const failedAttempt = {
     outcome: "FAILED",
@@ -378,8 +388,23 @@ async function verifyBookings() {
     1,
   );
   console.log(
-    "PASS: catalog and inventory controls, concurrent last-room reservation, ownership, payment retries, cancellation decisions, one refund and restored availability.",
+    "PASS: catalog and inventory controls, concurrent last-room reservation, ownership, editable holds, payment retries, cancellation decisions, one refund and restored availability.",
   );
+  const careBooking = await request("/api/bookings", "POST", {
+    petId: p.pet.id,
+    roomTypeId: booking.roomTypeId,
+    start: days(offset + 60),
+    end: days(offset + 63),
+    specialCare: "Use the pet's usual feeding routine.",
+  }, p.token, 201);
+  await request("/api/bookings/" + careBooking.id + "/checkout", "POST",
+    { outcome: "SUCCESS", attemptId: randomUUID() }, p.token);
+  await verifyCare({ request, staff, customer: p, foreign, booking: careBooking, origin });
+  await verifyAdmin({
+    request, staff, customer: p, customerPassword: password, bookingId: confirmed.id,
+    adminEmail: process.env.PAWINN_TEST_ADMIN_EMAIL,
+    adminPassword: process.env.PAWINN_TEST_ADMIN_PASSWORD,
+  });
 }
 
 // Post text or a photo through the same multipart route the staff dashboard uses.
@@ -489,12 +514,22 @@ async function verifyRescheduling(confirmed, customer, foreign, staff) {
   await request(
     path,
     "POST",
-    { ...earlier, end: confirmed.end },
+    { ...earlier, end: earlier.start },
     customer.token,
     400,
   );
 
-  const pending = await request(path, "POST", earlier, customer.token, 201);
+  const extended = { ...earlier, end: confirmed.end };
+  const quote = await request(
+    path + "/quote?start=" + extended.start + "&end=" + extended.end,
+    "GET",
+    undefined,
+    customer.token,
+  );
+  assert.equal(quote.newTotal, confirmed.total + confirmed.nightlyRate);
+  assert.equal(quote.difference, confirmed.nightlyRate);
+  await request(path, "POST", { ...extended, confirmedTotal: 0 }, customer.token, 409);
+  const pending = await request(path, "POST", { ...extended, confirmedTotal: quote.newTotal }, customer.token, 201);
   assert.equal(pending.start, confirmed.start);
   assert.equal(pending.reschedule.status, "PENDING");
   await request(path, "POST", earlier, customer.token, 409);
@@ -511,9 +546,11 @@ async function verifyRescheduling(confirmed, customer, foreign, staff) {
   await request(reviewPath, "PATCH", approve, customer.token, 403);
   const moved = await request(reviewPath, "PATCH", approve, staff.token);
   assert.equal(moved.start, earlier.start);
-  assert.equal(moved.end, earlier.end);
+  assert.equal(moved.end, extended.end);
   assert.equal(moved.roomId, confirmed.roomId);
-  assert.equal(moved.total, confirmed.total);
+  assert.equal(moved.total, quote.newTotal);
+  assert.equal(moved.reschedule.difference, quote.difference);
+  assert.ok(moved.reschedule.adjustmentReference);
   assert.equal(moved.specialCare, confirmed.specialCare);
   assert.equal(moved.paymentStatus, "SUCCESS");
   assert.equal(moved.reschedule.originalStart, confirmed.start);
@@ -528,7 +565,7 @@ async function verifyRescheduling(confirmed, customer, foreign, staff) {
     1,
   );
 
-  const later = await request(path, "POST", original, customer.token, 201);
+  const later = await request(path, "POST", { ...original, confirmedTotal: confirmed.total }, customer.token, 201);
   const movedBack = await request(
     path + "/" + later.reschedule.id,
     "PATCH",
@@ -537,6 +574,9 @@ async function verifyRescheduling(confirmed, customer, foreign, staff) {
   );
   assert.equal(movedBack.start, confirmed.start);
   assert.equal(movedBack.end, confirmed.end);
+  assert.equal(movedBack.total, confirmed.total);
+  assert.equal(movedBack.reschedule.difference, -confirmed.nightlyRate);
+  assert.ok(movedBack.reschedule.adjustmentReference);
 
   const occupied = { start: days(offset + 35), end: days(offset + 37), reason };
   await request(
@@ -551,9 +591,10 @@ async function verifyRescheduling(confirmed, customer, foreign, staff) {
     customer.token,
     201,
   );
-  const conflict = await request(path, "POST", occupied, customer.token, 201);
+  const conflict = await request(path, "POST", { ...occupied, confirmedTotal: confirmed.total }, customer.token, 201);
   const conflictPath = path + "/" + conflict.reschedule.id;
   await request(conflictPath, "PATCH", approve, staff.token, 409);
+  await request(conflictPath, "PATCH", { decision: "DECLINED", notes: " " }, staff.token, 400);
   const declined = await request(
     conflictPath,
     "PATCH",
@@ -566,6 +607,6 @@ async function verifyRescheduling(confirmed, customer, foreign, staff) {
   assert.equal(declined.reschedule.status, "DECLINED");
   assert.equal(declined.reschedule.note, "The pet already has another stay.");
   console.log(
-    "PASS: earlier and later reschedules, ownership, unchanged payment, retry, overlap conflict, and decline.",
+    "PASS: earlier and later reschedules, ownership, simulated price adjustments, retry, overlap conflict, and decline.",
   );
 }

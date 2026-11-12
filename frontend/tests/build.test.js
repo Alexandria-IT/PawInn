@@ -13,6 +13,7 @@ const pages = [
     "checkout",
     "staff-dashboard",
     "pet-updates",
+    "admin",
   ].map(
     /* Convert each page name to its built path. */ (p) => `pages/${p}.html`,
   ),

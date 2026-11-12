@@ -1,7 +1,7 @@
 import express from "express";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createPool } from "./db.js";
+import { createPool, prepareAccount } from "./db.js";
 import { accountError, accountRoutes } from "./routes.js";
 
 // Configure the Account Express application.
@@ -39,7 +39,8 @@ export function createApp({
       res,
     ) => {
       try {
-        await pool.query("SELECT user_id FROM users LIMIT 0");
+        await pool.query("SELECT user_id, account_status, session_version FROM users LIMIT 0");
+        await pool.query("SELECT audit_id FROM account_audit LIMIT 0");
         await pool.query("SELECT pet_id FROM pets LIMIT 0");
         await pool.query("SELECT booking_id FROM bookings LIMIT 0");
         res.json({ data: { status: "ok" } });
@@ -63,14 +64,16 @@ if (
   process.argv[1] &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
+  let pool;
   try {
-    const pool = createPool();
+    pool = createPool();
     pool.on(
       "error",
       /* Log database pool errors. */ (error) =>
         console.error("Account database:", error.code || error.name),
     );
     const app = createApp({ pool, secret: process.env.JWT_SECRET });
+    await prepareAccount(pool);
     const port = Number(process.env.ACCOUNT_PORT || 3001);
     const host = process.env.ACCOUNT_HOST || "127.0.0.1";
     const server = app.listen(
@@ -101,6 +104,7 @@ if (
     process.once("SIGTERM", stop);
   } catch (error) {
     console.error(error.message);
+    await pool?.end();
     process.exitCode = 1;
   }
 }

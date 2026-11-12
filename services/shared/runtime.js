@@ -68,8 +68,9 @@ export function stay(start, end) {
   }
   // ISO date-only values use UTC here so the night count is calendar-based.
   const nights = (Date.parse(end) - Date.parse(start)) / millisecondsPerDay;
-  if (start < today() || nights < 1 || nights > 30)
-    fail(400, "Choose a stay of 1–30 nights starting today or later.");
+  if (start < today()) fail(400, "Check-in has passed. Choose today or a later date.");
+  if (nights < 1) fail(400, "Check-out must be after check-in. Choose a later check-out date.");
+  if (nights > 30) fail(400, "Stays can be up to 30 nights. Choose an earlier check-out date.");
 }
 // Validate and trim a text field.
 export function text(value, max, optional = false) {
@@ -145,32 +146,35 @@ export function createService({ express, jwt, pool, secret, routes, tables }) {
       _res,
       next,
     ) => {
-      let sub;
+      let sub, version;
       try {
         const token = /^Bearer ([^\s]+)$/i.exec(
           req.get("Authorization") || "",
         )?.[1];
-        if (token)
-          sub = id(
-            jwt.verify(token, secret, {
-              algorithms: ["HS256"],
-              issuer: "pawinn-account",
-              audience: "pawinn",
-            }).sub,
-          );
+        if (token) {
+          const claims = jwt.verify(token, secret, {
+            algorithms: ["HS256"],
+            issuer: "pawinn-account",
+            audience: "pawinn",
+          });
+          sub = id(claims.sub);
+          version = claims.ver ?? 0;
+        }
       } catch {
         /* Reject expired or invalid sessions. */
       }
       if (!sub) fail(401, "Sign in again to continue.");
-      // Read the current role from PostgreSQL even when the token is valid.
+      // Read current permissions and revocation state even when the token is valid.
       const {
         rows: [user],
       } = await pool.query(
-        "SELECT user_id, role, email FROM users WHERE user_id=$1",
+        "SELECT user_id, role, email, account_status, session_version FROM users WHERE user_id=$1",
         [sub],
       );
       if (
         !user ||
+        user.account_status !== "ACTIVE" ||
+        user.session_version !== version ||
         (!process.env.PAWINN_SEED_DEMO?.match(/^(1|true)$/i) &&
           user.email.toLowerCase().endsWith("@pawinn.demo"))
       )
@@ -182,6 +186,8 @@ export function createService({ express, jwt, pool, secret, routes, tables }) {
             ? "Staff access is required."
             : "A customer account is required.",
         );
+      if (!role && user.role === "ADMIN")
+        fail(403, "A customer or staff account is required.");
       req.user = user;
       next();
     };

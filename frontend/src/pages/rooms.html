@@ -39,7 +39,7 @@
             required
             @input="checked=false" /></label
         ><label
-          >Your travel buddy<select x-model="species">
+          >Your travel buddy<select x-model="species" @change="searchPetId=''">
             <option value="All">All pets</option>
             <option>Dog</option>
             <option>Cat</option>
@@ -50,6 +50,16 @@
           x-text="loading ? 'Checking…' : 'Check availability →'"
         ></button>
       </form>
+      <div class="mt-4 max-w-sm" x-show="$store.portal.pets.length" x-cloak>
+        <label>Search for a saved pet
+          <select x-model="searchPetId" @change="selectSearchPet()">
+            <option value="">Choose a pet (optional)</option>
+            <template x-for="pet in $store.portal.pets" :key="pet.id">
+              <option :value="pet.id" x-text="pet.name + ' · ' + pet.species"></option>
+            </template>
+          </select>
+        </label>
+      </div>
       <p
         class="error mt-4"
         x-show="error"

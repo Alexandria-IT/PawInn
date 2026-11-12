@@ -20,5 +20,43 @@ CREATE TABLE IF NOT EXISTS reschedule_requests (
     )
 );
 
+-- Replace the original fixed-length checks and add a durable simulated price adjustment.
+ALTER TABLE reschedule_requests
+    ADD COLUMN IF NOT EXISTS original_total NUMERIC(10,2),
+    ADD COLUMN IF NOT EXISTS new_total NUMERIC(10,2),
+    ADD COLUMN IF NOT EXISTS adjustment_reference VARCHAR(100);
+
+DO $$
+DECLARE old_name text;
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'reschedule_requests'::regclass AND conname = 'reschedule_variable_dates'
+    ) THEN
+        FOR old_name IN
+            SELECT conname FROM pg_constraint
+            WHERE conrelid = 'reschedule_requests'::regclass AND contype = 'c'
+              AND pg_get_constraintdef(oid) LIKE '%requested_check_in%'
+              AND pg_get_constraintdef(oid) LIKE '%original_check_in%'
+        LOOP
+            EXECUTE format('ALTER TABLE reschedule_requests DROP CONSTRAINT %I', old_name);
+        END LOOP;
+        UPDATE reschedule_requests r
+        SET original_total = b.nightly_rate * (r.original_check_out - r.original_check_in),
+            new_total = b.nightly_rate * (r.requested_check_out - r.requested_check_in)
+        FROM bookings b WHERE b.booking_id = r.booking_id AND r.original_total IS NULL;
+        ALTER TABLE reschedule_requests
+            ALTER COLUMN original_total SET NOT NULL,
+            ALTER COLUMN new_total SET NOT NULL,
+            ADD CONSTRAINT reschedule_variable_dates CHECK (
+                original_check_out > original_check_in AND requested_check_out > requested_check_in
+                AND (requested_check_in <> original_check_in OR requested_check_out <> original_check_out)
+                AND original_total > 0 AND new_total > 0
+            );
+    END IF;
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS reschedule_adjustment_reference ON reschedule_requests (adjustment_reference)
+    WHERE adjustment_reference IS NOT NULL;
 CREATE INDEX IF NOT EXISTS reschedule_requests_booking_history ON reschedule_requests (booking_id, reschedule_request_id DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS reschedule_requests_one_pending ON reschedule_requests (booking_id) WHERE status = 'PENDING';

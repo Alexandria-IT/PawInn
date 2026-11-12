@@ -124,7 +124,7 @@
                   x-show="booking.cancellation?.status==='PENDING'"
                   class="notice mt-4"
                 >
-                  Cancellation requested. Your booking remains confirmed until
+                  Cancellation request: Pending. Your booking remains confirmed until
                   staff approves it.
                 </p>
                 <p
@@ -167,6 +167,7 @@
           role="dialog"
           aria-modal="true"
           aria-labelledby="booking-title"
+          x-data="stayCare(false)"
         >
           <div class="modal-title">
             <div>
@@ -181,8 +182,12 @@
               ✕
             </button>
           </div>
+          <!-- include:customer-care-tabs -->
           <template x-if="detail"
-            ><div>
+            ><div x-show="careTab==='details'" id="stay-details-panel"
+              :role="hasCareTab(detail) ? 'tabpanel' : null"
+              :aria-labelledby="hasCareTab(detail) ? 'stay-details-tab' : null"
+              :tabindex="hasCareTab(detail) ? 0 : null">
               <div class="flex flex-wrap gap-2 mb-5">
                 <span
                   :class="badge(detail.status)"
@@ -227,7 +232,7 @@
               <div x-show="detail.cancellation" class="notice my-5">
                 <p class="font-semibold mb-1">
                   Cancellation request ·
-                  <span x-text="detail.cancellation?.status"></span>
+                  <span x-text="detail.cancellation?.status==='PENDING' ? 'Pending' : detail.cancellation?.status"></span>
                 </p>
                 <p x-text="detail.cancellation?.reason"></p>
                 <p
@@ -247,8 +252,11 @@
                   <span x-text="detail.reschedule?.status"></span>
                 </p>
                 <p
-                  x-text="dateLabel(detail.reschedule?.start)+' to '+dateLabel(detail.reschedule?.end)"
+                  x-text="'Original: '+dateLabel(detail.reschedule?.originalStart)+' to '+dateLabel(detail.reschedule?.originalEnd)"
                 ></p>
+                <p x-text="'Requested: '+dateLabel(detail.reschedule?.start)+' to '+dateLabel(detail.reschedule?.end)"></p>
+                <p x-show="detail.reschedule?.newTotal != null" x-text="'New total: '+money(detail.reschedule?.newTotal)"></p>
+                <p x-show="detail.reschedule?.adjustmentReference" x-text="'Simulated adjustment: '+detail.reschedule?.adjustmentReference"></p>
                 <p class="mt-2" x-text="detail.reschedule?.reason"></p>
                 <p
                   class="mt-2"
@@ -288,6 +296,7 @@
               >
             </div></template
           >
+          <!-- include:stay-care-history -->
         </section>
       </div>
       <div
@@ -324,26 +333,39 @@
             simulated refund.
           </p>
           <p class="muted text-sm mb-5" x-show="requestKind==='reschedule'">
-            Choose an earlier or later check-in. The number of nights and price
-            stay the same. Your current dates stay booked until staff approves
-            the request.
+            Choose new check-in and check-out dates, then review the price. Your current
+            dates stay booked until staff approves the request.
           </p>
           <form @submit.prevent="submitRequest()" class="space-y-4">
             <template x-if="requestKind==='reschedule'">
+              <div class="space-y-4">
               <div class="grid gap-3 sm:grid-cols-2">
                 <label
                   >New check-in
                   <input
                     type="date"
                     x-model="newStart"
+                    @change="clearQuote()"
                     :min="addDays(today(),1)"
                     required
                   />
                 </label>
                 <label
                   >New check-out
-                  <input type="date" :value="newEnd" readonly />
+                  <input type="date" x-model="newEnd" @change="clearQuote()" :min="newStart ? addDays(newStart,1) : addDays(today(),2)" required />
                 </label>
+              </div>
+              <button type="button" class="btn btn-outline btn-sm" :disabled="busy" @click="reviewDates()">Review updated price</button>
+              <template x-if="quote">
+                <div class="notice space-y-2" role="status">
+                  <p x-text="'Original total: '+money(quote.originalTotal)"></p>
+                  <p x-text="'New total: '+money(quote.newTotal)"></p>
+                  <p x-text="quote.difference === 0 ? 'No price change.' : (quote.difference > 0 ? 'Simulated charge: ' : 'Simulated refund: ') + money(Math.abs(quote.difference))"></p>
+                  <label class="flex items-center gap-2">
+                    <input type="checkbox" x-model="agreed" required /> I confirm the new total.
+                  </label>
+                </div>
+              </template>
               </div>
             </template>
             <label
@@ -357,14 +379,14 @@
               ></textarea>
             </label>
             <p class="error" x-show="error" x-text="error" role="alert"></p>
-            <div class="flex justify-end gap-3">
+            <div class="flex flex-wrap justify-end gap-3">
               <button
                 type="button"
                 class="btn btn-outline"
                 @click="requestTarget=null"
               >
                 Keep my stay</button
-              ><button class="btn btn-primary" :disabled="busy">
+              ><button class="btn btn-primary" :disabled="busy || (requestKind==='reschedule' && (!quote || !agreed))">
                 Send request →
               </button>
             </div>

@@ -3,7 +3,7 @@ WORKDIR /app/booking
 ENV NODE_ENV=production SERVICE_HOST=0.0.0.0
 COPY booking/package*.json ./
 RUN npm ci --omit=dev
-COPY booking/server.js booking/routes.js booking/updates.js booking/*-schema.sql ./
+COPY booking/server.js booking/routes.js booking/updates.js booking/care.js booking/*-schema.sql ./
 COPY shared/ /app/shared/
 USER node
 EXPOSE 3003

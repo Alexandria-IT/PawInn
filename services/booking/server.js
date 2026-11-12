@@ -28,16 +28,18 @@ async function prepare(pool) {
     new URL("./pet-updates-schema.sql", import.meta.url),
     "utf8",
   );
+  const careSchema = await readFile(new URL("./care-schema.sql", import.meta.url), "utf8");
   // Docker can restart Booking and PostgreSQL at the same time.
   for (let attempt = 1; ; attempt++) {
     try {
       await transaction(
         pool,
-        /* Apply both migrations under the shared inventory lock. */ async (
+        /* Apply the migrations under the shared inventory lock. */ async (
           db,
         ) => {
           await db.query(rescheduleSchema);
           await db.query(updateSchema);
+          await db.query(careSchema);
         },
       );
       return;
@@ -66,6 +68,10 @@ await runService(import.meta.url, {
     "cancellation_requests",
     "reschedule_requests",
     "pet_updates",
+    "booking_care_reports",
+    "booking_care_photos",
+    "booking_care_events",
+    "booking_care_corrections",
     "rooms",
     "room_types",
     "pets",

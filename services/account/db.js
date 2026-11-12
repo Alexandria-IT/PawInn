@@ -1,4 +1,12 @@
 import pg from "pg";
+import { readFile } from "node:fs/promises";
+import { setTimeout as delay } from "node:timers/promises";
+
+const accountSchemaLockId = 42002;
+const startupConnectionErrors = new Set([
+  "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EAI_AGAIN", "ENOTFOUND",
+  "08001", "08006", "57P01", "57P02", "57P03",
+]);
 
 // Connect Account to the configured PostgreSQL database.
 export function createPool(env = process.env) {
@@ -14,6 +22,52 @@ export function createPool(env = process.env) {
     connectionTimeoutMillis: 3000,
     statement_timeout: 5000,
   });
+}
+
+// Commit account changes and their audit entries together.
+export async function accountTransaction(pool, operation) {
+  const db = await pool.connect();
+  try {
+    await db.query("BEGIN");
+    const result = await operation(db);
+    await db.query("COMMIT");
+    return result;
+  } catch (error) {
+    await db.query("ROLLBACK");
+    throw error;
+  } finally {
+    db.release();
+  }
+}
+
+// Serialize schema upgrades and bootstrap attempts.
+export function lockAccountSchema(db) {
+  return db.query("SELECT pg_advisory_xact_lock($1)", [accountSchemaLockId]);
+}
+
+// Prepare both new and existing databases before serving requests.
+export async function prepareAccount(pool) {
+  const schema = await readFile(new URL("./admin-schema.sql", import.meta.url), "utf8");
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await accountTransaction(pool, async (db) => {
+        await lockAccountSchema(db);
+        await db.query(schema);
+      });
+      return;
+    } catch (error) {
+      if (attempt >= 15 || (error.code && !startupConnectionErrors.has(error.code))) throw error;
+      await delay(1000);
+    }
+  }
+}
+
+// Record the actor, affected account, and changed values.
+export function recordAccountAudit(db, actor, target, action, details) {
+  return db.query(
+    "INSERT INTO account_audit (actor_id,target_id,action,details) VALUES ($1,$2,$3,$4)",
+    [actor, target, action, details],
+  );
 }
 
 // Update an owned pet while checking active reservations.
@@ -70,4 +124,4 @@ export async function updatePet(pool, id, owner, changes) {
 
 export const petFields =
   "pet_id, owner_id, name, species, breed, to_char(birth_date, 'YYYY-MM-DD') AS birth_date, care_notes";
-export const userFields = "user_id, full_name, email, phone, role";
+export const userFields = "user_id, full_name, email, phone, role, account_status, session_version";

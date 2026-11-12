@@ -8,6 +8,7 @@ export default () => ({
   start: addDays(today(), 10),
   end: addDays(today(), 13),
   species: "All",
+  searchPetId: "",
   sort: "recommended",
   query: "",
   results: [],
@@ -53,6 +54,11 @@ export default () => ({
       this.loading = false;
     }
   },
+  // Derive the room category from the selected pet profile.
+  selectSearchPet() {
+    const pet = this.$store.portal.pets.find((p) => p.id === this.searchPetId);
+    this.species = pet?.species ?? "All";
+  },
   // Apply the room filters and selected sorting.
   get filtered() {
     const rooms = this.results.filter(
@@ -86,7 +92,7 @@ export default () => ({
       return;
     }
     this.selected = room;
-    this.petId = this.suitablePets[0]?.id || "";
+    this.petId = this.suitablePets.find((p) => p.id === this.searchPetId)?.id ?? this.suitablePets[0]?.id ?? "";
     this.specialCare = "";
     this.reserveError = "";
   },

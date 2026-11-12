@@ -18,17 +18,29 @@ function imageType(bytes) {
   fail(400, "Choose a JPEG, PNG, or WebP photo.");
 }
 
-// Read one optional photo and one optional message from the staff form.
-async function readUpdate(req) {
-  if (!Buffer.isBuffer(req.body)) fail(400, "Send the update as a form.");
-  let form;
+// Parse a staff upload after Express enforces the request size limit.
+export async function readMultipartForm(req, name) {
+  if (!Buffer.isBuffer(req.body)) fail(400, `Send the ${name} as a form.`);
   try {
-    form = await new Response(req.body, {
+    return await new Response(req.body, {
       headers: { "Content-Type": req.get("Content-Type") },
     }).formData();
   } catch {
-    fail(400, "The update form could not be read.");
+    fail(400, `The ${name} form could not be read.`);
   }
+}
+
+// Validate an uploaded photo and derive the response type from its bytes.
+export async function readPhoto(file) {
+  if (typeof file === "string" || !file.size) fail(400, "Choose a photo.");
+  if (file.size > maxPhotoBytes) fail(413, "Choose a photo up to 2 MB.");
+  const photo = Buffer.from(await file.arrayBuffer());
+  return { photo, photoType: imageType(photo) };
+}
+
+// Read one optional photo and one optional message from the staff form.
+async function readUpdate(req) {
+  const form = await readMultipartForm(req, "update");
   for (const key of form.keys()) {
     if (!["message", "photo"].includes(key) || form.getAll(key).length !== 1)
       fail(400, "Send one message and up to one photo.");
@@ -42,12 +54,7 @@ async function readUpdate(req) {
   const file = form.get("photo");
   let photo = null;
   let photoType = null;
-  if (file !== null) {
-    if (typeof file === "string" || !file.size) fail(400, "Choose a photo.");
-    if (file.size > maxPhotoBytes) fail(413, "Choose a photo up to 2 MB.");
-    photo = Buffer.from(await file.arrayBuffer());
-    photoType = imageType(photo);
-  }
+  if (file !== null) ({ photo, photoType } = await readPhoto(file));
   if (!message && !photo) fail(400, "Write a message or attach a photo.");
   return { message, photo, photoType };
 }

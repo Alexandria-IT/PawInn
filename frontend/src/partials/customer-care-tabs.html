@@ -1,0 +1,37 @@
+<div
+  class="tabs mb-5"
+  role="tablist"
+  aria-label="Booking information"
+  x-show="hasCareTab(detail)"
+  @keydown.left.prevent="moveCareTab($event.key)"
+  @keydown.right.prevent="moveCareTab($event.key)"
+  @keydown.home.prevent="moveCareTab($event.key)"
+  @keydown.end.prevent="moveCareTab($event.key)"
+>
+  <button
+    id="stay-details-tab"
+    x-ref="detailsTab"
+    type="button"
+    role="tab"
+    aria-controls="stay-details-panel"
+    :aria-selected="careTab === 'details'"
+    :tabindex="careTab === 'details' ? 0 : -1"
+    :class="{ selected: careTab === 'details' }"
+    @click="selectCareTab('details')"
+  >
+    Booking details
+  </button>
+  <button
+    id="stay-care-tab"
+    x-ref="careTab"
+    type="button"
+    role="tab"
+    aria-controls="stay-care-panel"
+    :aria-selected="careTab === 'care'"
+    :tabindex="careTab === 'care' ? 0 : -1"
+    :class="{ selected: careTab === 'care' }"
+    @click="selectCareTab('care')"
+  >
+    Care during stay
+  </button>
+</div>

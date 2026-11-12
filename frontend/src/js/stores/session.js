@@ -37,7 +37,7 @@ export default () => ({
       ].includes(document.body.dataset.page);
       const [pets, bookings] = await Promise.all([
         user.role === "CUSTOMER" ? listPets(token) : [],
-        needsBookings ? listBookings() : [],
+        needsBookings && user.role !== "ADMIN" ? listBookings() : [],
       ]);
       if (rev !== this.revision) return;
       this.pets = pets.map(

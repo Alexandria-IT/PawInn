@@ -1,7 +1,7 @@
 import {
   review,
   reviewReschedule,
-  complete,
+  getBooking,
   postPetUpdate,
 } from "../api/bookings.js";
 import { catalog, inventory, setActive } from "../api/rooms.js";
@@ -10,6 +10,13 @@ import { today, toast } from "../helpers.js";
 export default () => ({
   tab: "requests",
   query: "",
+  checkInFilter: "",
+  bookingStatusFilter: "",
+  requestTypeFilter: "",
+  requestStatusFilter: "",
+  detail: null,
+  detailError: "",
+  detailLoading: false,
   target: null,
   updateTarget: null,
   updateMessage: "",
@@ -40,11 +47,36 @@ export default () => ({
   // Search the currently selected staff view.
   get items() {
     return (this.tab === "requests" ? this.requests : this.all).filter(
-      /* Match the booking ID, pet name, or customer name. */ (b) =>
-        (b.id + " " + b.petName + " " + b.customerName)
-          .toLowerCase()
-          .includes(this.query.toLowerCase()),
+      /* Apply filters to the booking and to the same change request. */ (b) => {
+        if (this.checkInFilter && b.start !== this.checkInFilter) return false;
+        if (this.bookingStatusFilter && b.status !== this.bookingStatusFilter) return false;
+        if (!(b.id + " " + b.petName + " " + b.customerName).toLowerCase().includes(this.query.trim().toLowerCase())) return false;
+        const type = this.requestTypeFilter;
+        const status = this.requestStatusFilter;
+        if (!type && !status) return true;
+        const types = type ? [type] : ["cancellation", "reschedule"];
+        return types.some((key) => b[key] && (!status || b[key].status === status)
+          && (this.tab !== "requests" || b[key].status === "PENDING"));
+      },
     );
+  },
+  // Clear all booking filters while keeping the current tab.
+  clearFilters() {
+    this.query = this.checkInFilter = this.bookingStatusFilter = this.requestTypeFilter = this.requestStatusFilter = "";
+  },
+  // Open a booking and fetch its latest details from the service.
+  async openDetails(booking) {
+    this.detail = booking;
+    this.detailError = "";
+    this.detailLoading = true;
+    try {
+      const details = await getBooking(booking.id);
+      if (this.detail?.id === booking.id) this.detail = details;
+    } catch (error) {
+      if (this.detail?.id === booking.id) this.detailError = error.message;
+    } finally {
+      if (this.detail?.id === booking.id) this.detailLoading = false;
+    }
   },
   // Count confirmed arrivals for today.
   get arrivals() {
@@ -79,13 +111,8 @@ export default () => ({
     return (
       this.target?.status === "CONFIRMED" &&
       this.target.start > date &&
+      !this.target.arrivedAt &&
       (this.reviewKind !== "reschedule" || this.reviewRequest?.start > date)
-    );
-  },
-  // Check whether the stay can be marked complete.
-  canComplete(b) {
-    return (
-      b.status === "CONFIRMED" && b.end <= today() && !this.hasPendingRequest(b)
     );
   },
   // Open the review form and choose its default decision.
@@ -164,20 +191,6 @@ export default () => ({
       this.updateError = error.message;
     } finally {
       this.sendingUpdate = false;
-    }
-  },
-  // Mark the stay complete and refresh the list.
-  async finish(b) {
-    if (this.busy) return;
-    this.busy = true;
-    try {
-      await complete(b.id);
-      await this.$store.portal.refresh();
-      toast("Stay marked completed.");
-    } catch (error) {
-      toast(error.message);
-    } finally {
-      this.busy = false;
     }
   },
   // Fetch inventory and room type names for staff.

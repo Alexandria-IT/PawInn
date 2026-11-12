@@ -9,6 +9,7 @@ import {
   text,
 } from "../shared/runtime.js";
 import { registerUpdateRoutes } from "./updates.js";
+import { registerCareRoutes } from "./care.js";
 
 const showFixtures = /^(1|true)$/i.test(process.env.PAWINN_SEED_DEMO || "");
 const visibleCustomer = showFixtures
@@ -38,6 +39,8 @@ const selection = `
     b.nightly_rate::float8 AS "nightlyRate",
     b.total_price::float8 AS total,
     b.special_care AS "specialCare",
+    b.arrived_at AS "arrivedAt",
+    b.picked_up_at AS "pickedUpAt",
     b.status,
     b.created_at AS "createdAt",
     b.payment_status AS "paymentStatus",
@@ -72,7 +75,9 @@ const selection = `
     SELECT json_build_object(
       'id', reschedule_request_id::text, 'status', status, 'reason', reason, 'note', review_notes,
       'originalStart', original_check_in::text, 'originalEnd', original_check_out::text,
-      'start', requested_check_in::text, 'end', requested_check_out::text
+      'start', requested_check_in::text, 'end', requested_check_out::text,
+      'originalTotal', original_total, 'newTotal', new_total,
+      'difference', new_total - original_total, 'adjustmentReference', adjustment_reference
     ) AS item
     FROM reschedule_requests
     WHERE booking_id = b.booking_id
@@ -139,10 +144,37 @@ async function availableRoom(
   return room;
 }
 
+// Validate an upcoming date change and price it at the booked nightly rate.
+async function rescheduleQuote(db, booking, start, end) {
+  stay(start, end);
+  if (start <= today()) fail(400, "Choose a new check-in after today.");
+  if (booking.status !== "CONFIRMED" || booking.start <= today() || booking.arrivedAt)
+    fail(409, "Only upcoming confirmed stays can be rescheduled.");
+  if (booking.cancellation?.status === "PENDING" || booking.reschedule?.status === "PENDING")
+    fail(409, "This booking already has a request awaiting review.");
+  if (start === booking.start && end === booking.end)
+    fail(400, "Choose a different check-in or check-out date.");
+  const { rows: [quote] } = await db.query(
+    `SELECT $1::numeric::float8 AS "originalTotal",
+       ($2::numeric * ($4::date - $3::date))::float8 AS "newTotal",
+       ($2::numeric * ($4::date - $3::date) - $1::numeric)::float8 AS difference`,
+    [booking.total, booking.nightlyRate, start, end],
+  );
+  return quote;
+}
+
+// Require an explanation for a declined change.
+function reviewNote(notes, decision) {
+  const note = text(typeof notes === "string" ? notes.trim() : notes, 1000, true);
+  if (decision === "DECLINED" && !note) fail(400, "Enter a reason for declining the request.");
+  return note;
+}
+
 // Register availability, booking, checkout, and request review routes.
 export function routes(router, pool, auth) {
   // Register the inbox before the generic booking detail route.
   registerUpdateRoutes(router, pool, auth, { getBooking: get, log });
+  registerCareRoutes(router, pool, auth, { getBooking: get, log });
   // Expire holds under the shared inventory lock.
   const expireHolds = () => transaction(pool, expire);
   router.get(
@@ -285,6 +317,53 @@ export function routes(router, pool, auth) {
       send(res, result, 201);
     },
   );
+  router.patch(
+    "/bookings/:id/hold",
+    auth("CUSTOMER"),
+    /* Edit an unpaid hold without extending its original expiry. */ async (req, res) => {
+      const bookingId = id(req.params.id);
+      const owner = req.user.user_id;
+      const { petId, roomTypeId, start, end, specialCare } = body(req, [
+        "petId", "roomTypeId", "start", "end", "specialCare",
+      ]);
+      const petKey = id(petId);
+      const typeKey = id(roomTypeId);
+      const care = text(typeof specialCare === "string" ? specialCare.trim() : specialCare, 2000, true);
+      stay(start, end);
+      const result = await transaction(pool, /* Validate and move the held booking in one write. */ async (db) => {
+        await expire(db);
+        const booking = await get(db, bookingId, owner);
+        if (booking.status !== "PENDING" || booking.expiresAt <= Date.now())
+          fail(409, "This hold cannot be edited. Start a new reservation if your hold expired.");
+        const { rows: [pet] } = await db.query(
+          "SELECT species FROM pets WHERE pet_id=$1 AND owner_id=$2 FOR UPDATE", [petKey, owner],
+        );
+        if (!pet) fail(404, "Pet not found.");
+        const { rows: [type] } = await db.query(
+          "SELECT species, price_per_night FROM room_types WHERE room_type_id=$1", [typeKey],
+        );
+        if (!type || type.species !== pet.species) fail(400, "Choose a room type that suits your pet.");
+        const { rowCount: clashes } = await db.query(
+          `SELECT 1 FROM bookings WHERE pet_id=$1 AND booking_id<>$2 AND status IN ('PENDING','CONFIRMED')
+           AND check_in_date<$4::date AND check_out_date>$3::date LIMIT 1`,
+          [petKey, bookingId, start, end],
+        );
+        if (clashes) fail(409, "This pet has an overlapping booking. Choose different dates.");
+        const room = await availableRoom(db, typeKey, start, end, bookingId, booking.roomId);
+        if (!room) fail(409, "No rooms are available for those dates. Choose different dates or a different room.");
+        const nightlyRate = booking.roomTypeId === String(typeKey) ? booking.nightlyRate : type.price_per_night;
+        await db.query(
+          `UPDATE bookings SET pet_id=$2, room_id=$3, check_in_date=$4, check_out_date=$5,
+             nightly_rate=$6, total_price=$6::numeric*($5::date-$4::date), special_care=$7, payment_status='UNPAID'
+           WHERE booking_id=$1`, [bookingId, petKey, room.room_id, start, end, nightlyRate, care],
+        );
+        await log(db, bookingId, owner, "HOLD_UPDATED", "Reservation details updated before checkout.");
+        return get(db, bookingId, owner);
+      });
+      send(res, result);
+    },
+  );
+
   router.post(
     "/bookings/:id/checkout",
     auth("CUSTOMER"),
@@ -361,7 +440,7 @@ export function routes(router, pool, auth) {
           db,
         ) => {
           const current = await get(db, booking, owner);
-          if (current.status !== "CONFIRMED" || current.start <= today())
+          if (current.status !== "CONFIRMED" || current.start <= today() || current.arrivedAt)
             fail(409, "Only upcoming confirmed stays can be cancelled.");
           if (current.cancellation?.status === "PENDING")
             fail(409, "A cancellation request is already awaiting review.");
@@ -417,7 +496,7 @@ export function routes(router, pool, auth) {
       const { decision, notes } = body(req, ["decision", "notes"]);
       if (!["APPROVED", "DECLINED"].includes(decision))
         fail(400, "Choose approve or decline.");
-      const note = text(notes, 1000, true);
+      const note = reviewNote(notes, decision);
       const result = await transaction(
         pool,
         /* Apply the review, any refund, and the corresponding audit entries. */ async (
@@ -436,7 +515,7 @@ export function routes(router, pool, auth) {
             fail(409, "This request has already been reviewed.");
           if (current.status !== "CONFIRMED")
             fail(409, "This stay is no longer confirmed.");
-          if (decision === "APPROVED" && current.start <= today())
+          if (decision === "APPROVED" && (current.start <= today() || current.arrivedAt))
             fail(409, "This stay has already started.");
           await db.query(
             "UPDATE cancellation_requests SET status=$2,reviewed_by=$3,reviewed_at=now(),review_notes=$4 WHERE cancellation_request_id=$1",
@@ -476,6 +555,15 @@ export function routes(router, pool, auth) {
     },
   );
 
+  router.get(
+    "/bookings/:id/reschedules/quote",
+    auth("CUSTOMER"),
+    /* Show the exact price of new dates before the customer submits them. */ async (req, res) => {
+      const booking = await get(pool, id(req.params.id), req.user.user_id);
+      send(res, await rescheduleQuote(pool, booking, req.query.start, req.query.end));
+    },
+  );
+
   router.post(
     "/bookings/:id/reschedules",
     auth("CUSTOMER"),
@@ -489,35 +577,24 @@ export function routes(router, pool, auth) {
         start,
         end,
         reason: inputReason,
-      } = body(req, ["start", "end", "reason"]);
+        confirmedTotal,
+      } = body(req, ["start", "end", "reason", "confirmedTotal"]);
       const reason = text(inputReason, 1000);
       stay(start, end);
-      if (start <= today()) fail(400, "Choose a new check-in after today.");
 
       const result = await transaction(
         pool,
         /* Save the request and its audit entry together. */ async (db) => {
           const booking = await get(db, bookingId, owner);
-          if (booking.status !== "CONFIRMED" || booking.start <= today())
-            fail(409, "Only upcoming confirmed stays can be rescheduled.");
-          if (
-            booking.cancellation?.status === "PENDING" ||
-            booking.reschedule?.status === "PENDING"
-          )
-            fail(409, "This booking already has a request awaiting review.");
-          if (start === booking.start)
-            fail(400, "Choose a different check-in date.");
-          if (
-            Date.parse(end) - Date.parse(start) !==
-            Date.parse(booking.end) - Date.parse(booking.start)
-          )
-            fail(400, "Keep the same number of nights when rescheduling.");
+          const quote = await rescheduleQuote(db, booking, start, end);
+          if (confirmedTotal !== quote.newTotal)
+            fail(409, "Review and confirm the updated price before sending your request.");
 
           await db.query(
             `INSERT INTO reschedule_requests
-             (booking_id, original_check_in, original_check_out, requested_check_in, requested_check_out, reason)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-            [bookingId, booking.start, booking.end, start, end, reason],
+             (booking_id, original_check_in, original_check_out, requested_check_in, requested_check_out, reason, original_total, new_total)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [bookingId, booking.start, booking.end, start, end, reason, quote.originalTotal, quote.newTotal],
           );
           await log(
             db,
@@ -546,7 +623,7 @@ export function routes(router, pool, auth) {
       const { decision, notes } = body(req, ["decision", "notes"]);
       if (!["APPROVED", "DECLINED"].includes(decision))
         fail(400, "Choose approve or decline.");
-      const note = text(notes, 1000, true);
+      const note = reviewNote(notes, decision);
 
       const result = await transaction(
         pool,
@@ -558,7 +635,9 @@ export function routes(router, pool, auth) {
             rows: [change],
           } = await db.query(
             `SELECT status, original_check_in::text AS "originalStart", original_check_out::text AS "originalEnd",
-                  requested_check_in::text AS start, requested_check_out::text AS end
+                  requested_check_in::text AS start, requested_check_out::text AS end,
+                  original_total::float8 AS "originalTotal", new_total::float8 AS "newTotal",
+                  (new_total - original_total)::float8 AS difference
            FROM reschedule_requests WHERE reschedule_request_id=$1 AND booking_id=$2`,
             [requestId, bookingId],
           );
@@ -567,9 +646,12 @@ export function routes(router, pool, auth) {
           if (change.status !== "PENDING")
             fail(409, "This request has already been reviewed.");
 
+          let adjustmentReference = null;
           if (decision === "APPROVED") {
             if (
               booking.status !== "CONFIRMED" ||
+              booking.arrivedAt ||
+              booking.total !== change.originalTotal ||
               booking.start <= today() ||
               change.start <= today() ||
               booking.start !== change.originalStart ||
@@ -580,24 +662,22 @@ export function routes(router, pool, auth) {
                 "These dates can no longer be approved. Decline the request instead.",
               );
             await expire(db);
-            const room = await availableRoom(
-              db,
-              booking.roomTypeId,
-              change.start,
-              change.end,
-              bookingId,
-              booking.roomId,
+            const { rowCount: available } = await db.query(
+              `SELECT r.room_id FROM rooms r WHERE r.room_id=$1 AND r.is_active
+                AND NOT EXISTS (
+                  SELECT 1 FROM bookings b WHERE b.room_id=r.room_id
+                  AND b.booking_id<>$2 AND b.status IN ('PENDING','CONFIRMED')
+                  AND b.check_in_date<$4::date AND b.check_out_date>$3::date
+                ) FOR UPDATE`,
+              [booking.roomId, bookingId, change.start, change.end],
             );
-            if (!room)
-              fail(
-                409,
-                "This room type is no longer available for the requested dates.",
-              );
+            if (!available)
+              fail(409, "The original room is no longer available for the requested dates. The current booking is unchanged.");
             // PostgreSQL also checks that the pet has no other overlapping stay.
             try {
               await db.query(
-                "UPDATE bookings SET room_id=$2, check_in_date=$3, check_out_date=$4 WHERE booking_id=$1",
-                [bookingId, room.room_id, change.start, change.end],
+                "UPDATE bookings SET check_in_date=$2, check_out_date=$3, total_price=$4 WHERE booking_id=$1",
+                [bookingId, change.start, change.end, change.newTotal],
               );
             } catch (error) {
               if (error.constraint === "bookings_no_pet_overlap")
@@ -607,12 +687,17 @@ export function routes(router, pool, auth) {
                 );
               throw error;
             }
+            if (change.difference !== 0) {
+              adjustmentReference = "SIM-CHANGE-" + requestId;
+              await log(db, bookingId, actor, "RESCHEDULE_PAYMENT_ADJUSTED",
+                `${adjustmentReference}: simulated ${change.difference > 0 ? "charge" : "refund"} of THB ${Math.abs(change.difference).toFixed(2)}.`);
+            }
           }
 
           await db.query(
-            `UPDATE reschedule_requests SET status=$2, reviewed_by=$3, reviewed_at=now(), review_notes=$4
+            `UPDATE reschedule_requests SET status=$2, reviewed_by=$3, reviewed_at=now(), review_notes=$4, adjustment_reference=$5
            WHERE reschedule_request_id=$1`,
-            [requestId, decision, actor, note],
+            [requestId, decision, actor, note, adjustmentReference],
           );
           const details =
             decision === "APPROVED"
@@ -629,41 +714,10 @@ export function routes(router, pool, auth) {
   router.patch(
     "/bookings/:id/complete",
     auth("STAFF"),
-    /* Accept a staff request to mark a stay complete. */ async (req, res) => {
-      const booking = id(req.params.id),
-        actor = req.user.user_id;
-      const result = await transaction(
-        pool,
-        /* Check completion rules and record the final status. */ async (
-          db,
-        ) => {
-          const current = await get(db, booking, null);
-          if (current.status === "COMPLETED") return current;
-          if (
-            current.status !== "CONFIRMED" ||
-            current.end > today() ||
-            current.cancellation?.status === "PENDING" ||
-            current.reschedule?.status === "PENDING"
-          )
-            fail(
-              409,
-              "Complete a confirmed stay after check-out and after reviewing any open request.",
-            );
-          await db.query(
-            "UPDATE bookings SET status='COMPLETED' WHERE booking_id=$1",
-            [booking],
-          );
-          await log(
-            db,
-            booking,
-            actor,
-            "STAY_COMPLETED",
-            "Stay marked completed.",
-          );
-          return get(db, booking, null);
-        },
-      );
-      send(res, result);
+    /* Direct older clients to attendance instead of skipping actual pickup. */ async (req, res) => {
+      const booking = await get(pool, id(req.params.id), null);
+      if (booking.status !== "COMPLETED") fail(409, "Record actual arrival and pickup under Stay care to complete this stay.");
+      send(res, booking);
     },
   );
   return router;

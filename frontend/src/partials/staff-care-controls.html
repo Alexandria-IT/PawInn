@@ -1,0 +1,180 @@
+<div class="modal-title">
+  <div class="min-w-0">
+    <p class="eyebrow mb-2" x-text="careBooking?.id"></p>
+    <h2 id="staff-stay-care-title" x-ref="staffCareTitle" tabindex="-1">Stay care</h2>
+    <p class="muted mt-1 break-words" x-text="careBooking?.petName"></p>
+  </div>
+  <button
+    type="button"
+    class="icon-btn shrink-0"
+    aria-label="Close stay care"
+    :disabled="careWriting"
+    @click="closeStaffCare()"
+  >
+    ✕
+  </button>
+</div>
+
+<div class="notice mb-4" x-show="careBooking?.specialCare">
+  <p class="font-semibold mb-1">Special-care instructions</p>
+  <p class="whitespace-pre-wrap break-words" x-text="careBooking?.specialCare"></p>
+</div>
+
+<div class="flex flex-wrap gap-2 mb-4" x-show="careData && !careError">
+  <button
+    type="button"
+    class="btn btn-outline btn-sm"
+    x-show="careData?.status === 'CONFIRMED' && !careData?.arrivedAt"
+    :disabled="careWriting || careLoading"
+    @click="openAttendance('arrival')"
+  >
+    Record arrival
+  </button>
+  <button
+    type="button"
+    class="btn btn-outline btn-sm"
+    x-show="careData?.status === 'CONFIRMED' && careData?.arrivedAt && !careData?.pickedUpAt"
+    :disabled="careWriting || careLoading"
+    @click="openAttendance('pickup')"
+  >
+    Record pickup
+  </button>
+  <button
+    type="button"
+    class="btn btn-outline btn-sm"
+    x-show="latestCareDay"
+    :disabled="careWriting || careLoading"
+    @click="openDailyReport()"
+  >
+    Daily report
+  </button>
+  <button
+    type="button"
+    class="btn btn-outline btn-sm"
+    x-show="latestCareDay"
+    :disabled="careWriting || careLoading"
+    @click="openCareEvent()"
+  >
+    Record care entry
+  </button>
+</div>
+
+<div class="border-y border-stone-200 py-4 mb-4" x-show="careForm">
+  <h3
+    class="text-lg mb-3"
+    x-ref="careEditor"
+    tabindex="-1"
+    x-text="({ arrival: 'Record actual arrival', pickup: 'Record actual pickup', report: selectedReport ? 'Edit daily report' : 'Publish daily report', event: careEvent?.id ? 'Edit care entry' : 'Record care entry' })[careForm]"
+  ></h3>
+  <template x-if="careForm === 'arrival' || careForm === 'pickup'">
+    <form @submit.prevent="submitAttendance()">
+      <fieldset class="space-y-3" :disabled="careWriting">
+        <label>
+          Actual date and time (Bangkok)
+          <input type="datetime-local" x-model="attendanceTime" required />
+        </label>
+        <p class="text-sm muted" x-show="careForm === 'pickup'">
+          Recording pickup completes the stay.
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <button class="btn btn-primary btn-sm" type="submit">Save time</button>
+          <button class="btn btn-outline btn-sm" type="button" @click="closeCareForm()">Cancel</button>
+        </div>
+      </fieldset>
+    </form>
+  </template>
+  <template x-if="careForm === 'report'">
+    <form @submit.prevent="submitDailyReport()">
+      <fieldset class="space-y-3" :disabled="careWriting">
+        <label>
+          Report date (Bangkok)
+          <select x-model="reportDate" @change="chooseReportDate($event.target.value)" required>
+            <template x-for="day in careData.days" :key="day.date">
+              <option :value="day.date" x-text="careDate(day.date)"></option>
+            </template>
+          </select>
+        </label>
+        <label>
+          Report text
+          <textarea rows="4" maxlength="2000" x-model="reportMessage" required></textarea>
+        </label>
+        <label>
+          <span x-text="selectedReport ? 'Replacement photos (optional)' : 'Photos'"></span>
+          <input
+            type="file"
+            x-ref="carePhotos"
+            accept="image/jpeg,image/png,image/webp"
+            aria-describedby="daily-report-photo-help"
+            :required="!selectedReport"
+            multiple
+          />
+        </label>
+        <p class="text-sm muted" id="daily-report-photo-help">
+          JPEG, PNG or WebP. Up to 2 MB each and less than 3 MB in total.
+          <span x-show="selectedReport">Leave empty to keep the current photos.</span>
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <button class="btn btn-primary btn-sm" type="submit" x-text="selectedReport ? 'Save changes' : 'Publish report'"></button>
+          <button class="btn btn-outline btn-sm" type="button" @click="closeCareForm()">Cancel</button>
+        </div>
+      </fieldset>
+    </form>
+  </template>
+  <template x-if="careForm === 'event'">
+    <form @submit.prevent="submitCareEvent()">
+      <fieldset class="space-y-3" :disabled="careWriting">
+        <div class="grid gap-3 sm:grid-cols-2">
+          <label>
+            Care date (Bangkok)
+            <select x-model="eventDate" :disabled="!!careEvent.id" required>
+              <template x-for="day in careData.days" :key="day.date">
+                <option :value="day.date" x-text="careDate(day.date)"></option>
+              </template>
+            </select>
+          </label>
+          <label>
+            Care time (Bangkok)
+            <input type="time" x-model="careEvent.time" required />
+          </label>
+        </div>
+        <label>
+          Care type
+          <input type="text" maxlength="100" x-model="careEvent.careType" required />
+        </label>
+        <label>
+          Action
+          <textarea rows="2" maxlength="1000" x-model="careEvent.action" required></textarea>
+        </label>
+        <label>
+          Result or observation
+          <textarea rows="2" maxlength="1000" x-model="careEvent.observation" required></textarea>
+        </label>
+        <label>
+          Status
+          <select x-model="careEvent.status" required>
+            <option value="PERFORMED">Performed</option>
+            <option value="NOT_PERFORMED">Could not perform</option>
+          </select>
+        </label>
+        <template x-if="careEvent.status === 'NOT_PERFORMED'">
+          <div class="space-y-3">
+            <label>
+              Reason
+              <textarea rows="2" maxlength="1000" x-model="careEvent.reason" required></textarea>
+            </label>
+            <label>
+              Next action
+              <textarea rows="2" maxlength="1000" x-model="careEvent.followUp" required></textarea>
+            </label>
+          </div>
+        </template>
+        <div class="flex flex-wrap gap-2">
+          <button class="btn btn-primary btn-sm" type="submit" x-text="careEvent.id ? 'Save changes' : 'Record care entry'"></button>
+          <button class="btn btn-outline btn-sm" type="button" @click="closeCareForm()">Cancel</button>
+        </div>
+      </fieldset>
+    </form>
+  </template>
+  <p class="muted mt-3" role="status" x-show="careWriting">Saving…</p>
+  <p class="error mt-3" role="alert" x-show="careFormError" x-text="careFormError"></p>
+</div>

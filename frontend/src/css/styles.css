@@ -782,6 +782,11 @@
     padding: 7px 11px;
   }
 }
+@media (max-width: 390px) {
+  .search-bar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

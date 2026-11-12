@@ -76,7 +76,7 @@
         >
           <div class="tabs" aria-label="Staff views">
             <button
-              @click="tab='requests'"
+              @click="tab='requests'; requestStatusFilter=''"
               :class="{'selected':tab==='requests'}"
               :aria-pressed="tab==='requests'"
             >
@@ -102,6 +102,34 @@
             />
           </div>
         </div>
+        <div class="grid gap-3 mb-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label>Check-in date <input type="date" x-model="checkInFilter" /></label>
+          <label>Booking status
+            <select x-model="bookingStatusFilter">
+              <option value="">All booking statuses</option>
+              <option value="PENDING">Pending</option>
+              <option value="CONFIRMED">Confirmed</option>
+              <option value="CANCELLED">Cancelled</option>
+              <option value="COMPLETED">Completed</option>
+            </select>
+          </label>
+          <label>Request type
+            <select x-model="requestTypeFilter">
+              <option value="">All request types</option>
+              <option value="cancellation">Cancellation</option>
+              <option value="reschedule">Reschedule</option>
+            </select>
+          </label>
+          <label x-show="tab==='bookings'">Request status
+            <select x-model="requestStatusFilter">
+              <option value="">All request statuses</option>
+              <option value="PENDING">Pending</option>
+              <option value="APPROVED">Approved</option>
+              <option value="DECLINED">Declined</option>
+            </select>
+          </label>
+        </div>
+        <button type="button" class="text-link mb-4" @click="clearFilters()" x-show="query || checkInFilter || bookingStatusFilter || requestTypeFilter || requestStatusFilter">Clear filters</button>
         <div class="card" x-show="items.length">
           <div class="table-wrap">
             <table>
@@ -155,6 +183,7 @@
                     </td>
                     <td x-text="money(booking.total)"></td>
                     <td>
+                      <button class="btn btn-outline btn-sm" @click="openDetails(booking)">Details</button>
                       <button
                         x-show="hasPendingRequest(booking)"
                         class="btn btn-soft btn-sm"
@@ -162,21 +191,21 @@
                       >
                         Review request ↗</button
                       ><button
-                        x-show="canComplete(booking)"
+                        x-show="['CONFIRMED','COMPLETED'].includes(booking.status)"
                         class="btn btn-outline btn-sm"
-                        @click="finish(booking)"
+                        @click="$dispatch('open-stay-care', booking)"
                       >
-                        Complete stay</button
+                        Stay care</button
                       ><button
                         x-show="booking.status==='CONFIRMED'"
                         class="btn btn-outline btn-sm"
                         @click="openUpdate(booking)"
                       >
-                        Care &amp; updates</button
+                        Send pet update</button
                       ><span
                         class="muted text-xs"
                         x-show="booking.status!=='CONFIRMED' && !hasPendingRequest(booking)"
-                        >All settled for now</span
+                        >No open actions</span
                       >
                     </td>
                   </tr></template
@@ -291,6 +320,10 @@
                     x-text="dateLabel(reviewRequest?.start)+' to '+dateLabel(reviewRequest?.end)"
                   ></strong>
                 </div>
+                <div class="summary-line">
+                  <span>New total</span><strong x-text="money(reviewRequest?.newTotal)"></strong>
+                </div>
+                <p class="text-sm" x-text="reviewRequest?.difference === 0 ? 'No price change.' : (reviewRequest?.difference > 0 ? 'Simulated charge: ' : 'Simulated refund: ') + money(Math.abs(reviewRequest?.difference ?? 0))"></p>
               </div>
               <div class="notice my-4">
                 <p class="eyebrow mb-2">CUSTOMER’S REASON</p>
@@ -325,14 +358,14 @@
                     x-model="note"
                     rows="3"
                     maxlength="1000"
-                    required
-                    placeholder="Leave a helpful note for the customer."
+                    :required="!approved"
+                    placeholder="Explain the reason if you decline the request."
                   ></textarea>
                 </label>
                 <p class="error" x-show="error" x-text="error" role="alert"></p>
                 <p
                   class="text-xs muted"
-                  x-text="reviewKind==='reschedule' ? (approved?'Approval moves the stay if a room is available.':'The stay keeps its current dates.') : (approved?'This releases the room and issues a full simulated refund.':'The stay remains confirmed and no refund is issued.')"
+                  x-text="reviewKind==='reschedule' ? (approved?'Approval requires the original room to be free for all requested nights.':'The stay keeps its current dates.') : (approved?'This releases the room and issues a full simulated refund.':'The stay remains confirmed and no refund is issued.')"
                 ></p>
                 <button
                   class="btn btn-primary w-full"
@@ -341,6 +374,43 @@
                 ></button>
               </form></div
           ></template>
+        </section>
+      </div>
+
+      <div class="modal-overlay" x-data="stayCare(true)" x-show="careBooking" x-cloak
+        @open-stay-care.window="openStaffCare($event.detail)"
+        @click.self="closeStaffCare()" @keydown.escape.window="closeStaffCare()" x-trap.inert.noscroll="careBooking">
+        <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="staff-stay-care-title">
+          <!-- include:staff-care-controls -->
+          <!-- include:stay-care-history -->
+        </section>
+      </div>
+
+      <div class="modal-overlay" x-show="detail" x-cloak @click.self="detail=null" @keydown.escape.window="detail=null" x-trap.inert.noscroll="detail">
+        <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="staff-booking-detail">
+          <div class="modal-title">
+            <h2 id="staff-booking-detail">Booking details</h2>
+            <button type="button" class="icon-btn" @click="detail=null" aria-label="Close booking details">✕</button>
+          </div>
+          <template x-if="detail">
+            <div class="space-y-3">
+              <p x-text="'Booking #'+detail.id+' · '+detail.customerName+' · '+detail.petName"></p>
+              <p x-text="detail.roomName+' · Room '+detail.roomNumber"></p>
+              <p x-text="dateLabel(detail.start)+' to '+dateLabel(detail.end)"></p>
+              <p x-text="'Booking status: '+detail.status"></p>
+              <p x-text="'Total: '+money(detail.total)"></p>
+              <p x-show="detail.cancellation" x-text="'Cancellation request: '+detail.cancellation?.status"></p>
+              <p x-show="detail.reschedule" x-text="'Reschedule request: '+detail.reschedule?.status"></p>
+              <p x-show="detail.specialCare" class="whitespace-pre-wrap break-words" x-text="'Care instructions: '+detail.specialCare"></p>
+              <p x-show="detailLoading" role="status">Loading latest booking details…</p>
+              <p x-show="detailError" class="error" role="alert" x-text="detailError"></p>
+              <ol class="timeline" aria-label="Booking history">
+                <template x-for="(entry, index) in detail.logs" :key="index">
+                  <li class="timeline-item" x-text="entry.text"></li>
+                </template>
+              </ol>
+            </div>
+          </template>
         </section>
       </div>
 

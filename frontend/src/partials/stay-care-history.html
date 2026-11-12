@@ -1,0 +1,184 @@
+<section
+  id="stay-care-panel"
+  :role="isStaff ? null : 'tabpanel'"
+  :aria-labelledby="isStaff ? 'stay-care-history-title' : 'stay-care-tab'"
+  :tabindex="isStaff ? null : 0"
+  x-show="isStaff || careTab === 'care'"
+  x-cloak
+>
+  <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
+    <h3 class="text-lg" id="stay-care-history-title">Care history</h3>
+    <button
+      type="button"
+      class="btn btn-outline btn-sm"
+      x-show="careData || careError"
+      :disabled="careLoading || careWriting"
+      @click="loadCare()"
+      x-text="careError ? 'Try again' : 'Refresh history'"
+    ></button>
+  </div>
+  <p class="muted" role="status" x-show="careLoading">Loading care history…</p>
+  <p class="error" role="alert" x-show="careError" x-text="careError"></p>
+
+  <template x-if="careData">
+    <div class="space-y-5">
+      <dl class="grid gap-3 sm:grid-cols-2 text-sm">
+        <div>
+          <dt class="muted">Actual arrival (Bangkok)</dt>
+          <dd x-text="careData.arrivedAt ? careTimestamp(careData.arrivedAt) : 'Awaiting arrival record'"></dd>
+        </div>
+        <div>
+          <dt class="muted">Actual pickup (Bangkok)</dt>
+          <dd x-text="careData.pickedUpAt ? careTimestamp(careData.pickedUpAt) : 'Awaiting pickup record'"></dd>
+        </div>
+      </dl>
+      <p class="muted text-sm" x-show="!careData.days.length">No care history has been recorded for this stay yet.</p>
+
+      <ol class="space-y-5">
+        <template x-for="day in careData.days" :key="day.date">
+          <li class="border-t border-stone-200 pt-4">
+            <h4 class="text-lg mb-2"><time :datetime="day.date" x-text="careDate(day.date)"></time></h4>
+            <template x-if="!day.report">
+              <p
+                class="notice"
+                x-text="careData.missingReportDates.includes(day.date) ? 'Daily report missing' : 'Daily report pending'"
+              ></p>
+            </template>
+            <template x-if="day.report">
+              <article class="notice">
+                <div class="flex flex-wrap justify-between items-center gap-2">
+                  <h5 class="font-semibold">Daily report</h5>
+                  <button
+                    type="button"
+                    class="btn btn-outline btn-sm"
+                    x-show="isStaff"
+                    :disabled="careWriting || careLoading || !!careError"
+                    :aria-label="'Edit daily report for ' + careDate(day.date)"
+                    @click="openDailyReport(day.date)"
+                  >
+                    Edit report
+                  </button>
+                </div>
+                <p class="mt-2 whitespace-pre-wrap break-words" x-text="day.report.message"></p>
+                <p class="mt-2 muted text-xs" x-show="day.report.recordedBy?.name" x-text="'Recorded by ' + day.report.recordedBy?.name"></p>
+                <div class="grid gap-3 mt-3" :class="{ 'sm:grid-cols-2': day.report.photos.length > 1 }">
+                  <template x-for="photo in day.report.photos" :key="photo.id">
+                    <div x-data="stayCarePhoto(careData.bookingId, photo.id)">
+                      <p class="muted text-xs" x-show="!carePhotoSource && !carePhotoError" role="status">Loading photo…</p>
+                      <p class="error text-xs" x-show="carePhotoError" x-text="carePhotoError" role="alert"></p>
+                      <img
+                        class="rounded-xl w-full max-h-72 object-contain bg-stone-100"
+                        x-show="carePhotoSource"
+                        :src="carePhotoSource || null"
+                        :alt="'Daily report photo of ' + careData.petName"
+                      />
+                    </div>
+                  </template>
+                </div>
+              </article>
+            </template>
+            <ol class="timeline mt-4" x-show="day.events.length" aria-label="Care entries in time order">
+              <template x-for="event in day.events" :key="event.id">
+                <li class="timeline-item">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <time class="muted text-xs" :datetime="event.time" x-text="event.time.slice(0, 5)"></time>
+                    <h5 class="min-w-0 font-semibold break-words" x-text="event.careType"></h5>
+                    <span
+                      class="text-xs"
+                      :class="event.status === 'PERFORMED' ? 'badge badge-success' : 'badge'"
+                      x-text="event.status === 'PERFORMED' ? 'Performed' : 'Could not perform'"
+                    ></span>
+                    <button
+                      type="button"
+                      class="btn btn-outline btn-sm"
+                      x-show="isStaff"
+                      :disabled="careWriting || careLoading || !!careError"
+                      :aria-label="'Edit ' + event.careType + ' entry at ' + event.time + ' on ' + careDate(day.date)"
+                      @click="openCareEvent(day.date, event)"
+                    >
+                      Edit entry
+                    </button>
+                  </div>
+                  <dl class="mt-2 space-y-2 text-sm">
+                    <div>
+                      <dt class="font-semibold">Action</dt>
+                      <dd class="whitespace-pre-wrap break-words" x-text="event.action"></dd>
+                    </div>
+                    <div>
+                      <dt class="font-semibold">Result or observation</dt>
+                      <dd class="whitespace-pre-wrap break-words" x-text="event.observation"></dd>
+                    </div>
+                    <div x-show="event.reason">
+                      <dt class="font-semibold">Reason</dt>
+                      <dd class="whitespace-pre-wrap break-words" x-text="event.reason"></dd>
+                    </div>
+                    <div x-show="event.followUp">
+                      <dt class="font-semibold">Next action</dt>
+                      <dd class="whitespace-pre-wrap break-words" x-text="event.followUp"></dd>
+                    </div>
+                  </dl>
+                  <p class="mt-2 muted text-xs" x-show="event.recordedBy?.name" x-text="'Recorded by ' + event.recordedBy?.name"></p>
+                </li>
+              </template>
+            </ol>
+          </li>
+        </template>
+      </ol>
+
+      <template x-if="isStaff && careData.corrections?.length">
+        <section class="border-t border-stone-200 pt-4" aria-labelledby="care-corrections-title">
+          <h4 id="care-corrections-title" class="text-lg mb-2">Edit history</h4>
+          <ol class="space-y-3">
+            <template x-for="edit in careData.corrections" :key="edit.id">
+              <li>
+                <details class="notice" x-data="{ showPrevious: false }" @toggle="showPrevious = $el.open">
+                  <summary class="cursor-pointer">
+                    <span x-text="edit.kind === 'REPORT' ? 'Daily report' : 'Care entry'"></span>
+                    for <time :datetime="edit.date" x-text="careDate(edit.date)"></time>
+                  </summary>
+                  <p class="muted text-xs mt-2">
+                    Edited <time :datetime="edit.editedAt" x-text="careTimestamp(edit.editedAt)"></time>
+                    <span x-show="edit.editedBy?.name" x-text="'by ' + edit.editedBy?.name"></span>
+                  </p>
+                  <p class="font-semibold mt-2">Previous entry</p>
+                  <template x-if="showPrevious && edit.kind === 'REPORT'">
+                    <div>
+                      <p class="whitespace-pre-wrap break-words" x-text="edit.before.message"></p>
+                      <div class="grid gap-2 mt-2 sm:grid-cols-2" x-show="edit.before.photos?.length">
+                        <template x-for="photo in edit.before.photos || []" :key="photo.id">
+                          <div x-data="stayCarePhoto(careData.bookingId, photo.id)">
+                            <p class="muted text-xs" x-show="!carePhotoSource && !carePhotoError" role="status">Loading photo…</p>
+                            <p class="error text-xs" x-show="carePhotoError" x-text="carePhotoError" role="alert"></p>
+                            <img
+                              class="rounded-xl w-full max-h-48 object-contain bg-stone-100"
+                              x-show="carePhotoSource"
+                              :src="carePhotoSource || null"
+                              :alt="'Previous daily report photo of ' + careData.petName"
+                            />
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </template>
+                  <template x-if="edit.kind === 'EVENT'">
+                    <div class="space-y-1 text-sm">
+                      <p class="break-words">
+                        <time :datetime="edit.before.time" x-text="edit.before.time"></time>
+                        <span x-text="edit.before.careType"></span>
+                        · <span x-text="edit.before.status === 'PERFORMED' ? 'Performed' : 'Could not perform'"></span>
+                      </p>
+                      <p class="whitespace-pre-wrap break-words"><strong>Action</strong> <span x-text="edit.before.action"></span></p>
+                      <p class="whitespace-pre-wrap break-words"><strong>Result or observation</strong> <span x-text="edit.before.observation"></span></p>
+                      <p class="whitespace-pre-wrap break-words" x-show="edit.before.reason"><strong>Reason</strong> <span x-text="edit.before.reason"></span></p>
+                      <p class="whitespace-pre-wrap break-words" x-show="edit.before.followUp"><strong>Next action</strong> <span x-text="edit.before.followUp"></span></p>
+                    </div>
+                  </template>
+                </details>
+              </li>
+            </template>
+          </ol>
+        </section>
+      </template>
+    </div>
+  </template>
+</section>

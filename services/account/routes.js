@@ -3,31 +3,12 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { rateLimit } from "express-rate-limit";
 import { petFields, userFields, updatePet } from "./db.js";
+import { registerAdminRoutes } from "./admin.js";
+import { RequestError, fail, send, userDto, fields, clean, credentials, parseId } from "./http.js";
 
 const tokenOptions = { issuer: "pawinn-account", audience: "pawinn" };
 // Run a bcrypt comparison for unknown emails to keep the login path comparable.
 const dummyHash = bcrypt.hashSync("unused-account-timing-placeholder", 10);
-class RequestError extends Error {
-  // Carry a client-safe message and its HTTP status.
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
-// Stop the request with a controlled error.
-const fail = (status, message) => {
-  throw new RequestError(status, message);
-};
-// Send data in the shared API response shape.
-const send = (res, data, status = 200) => res.status(status).json({ data });
-// Map public account fields to the API response.
-const userDto = (r) => ({
-  id: String(r.user_id),
-  name: r.full_name,
-  email: r.email,
-  phone: r.phone,
-  role: r.role,
-});
 // Map pet fields and IDs to the API response.
 const petDto = (r) => ({
   id: String(r.pet_id),
@@ -39,66 +20,6 @@ const petDto = (r) => ({
   notes: r.care_notes,
 });
 
-// Validate the request object's allowed fields.
-function fields(body, allowed) {
-  if (
-    !body ||
-    typeof body !== "object" ||
-    Array.isArray(body) ||
-    Object.keys(body).some(
-      /* Detect a field outside the route's allowed list. */ (key) =>
-        !allowed.includes(key),
-    )
-  ) {
-    fail(400, "Send a JSON object with only the supported fields.");
-  }
-  return body;
-}
-// Trim and validate an account or pet form field.
-function clean(value, label, max, min = 0) {
-  if ((value === undefined || value === null) && !min) return null;
-  if (typeof value !== "string" || value.includes("\0"))
-    fail(400, label + " is invalid.");
-  const trimmed = value.trim();
-  if (trimmed.length < min || trimmed.length > max) {
-    fail(
-      400,
-      label +
-        " must be " +
-        (min ? min + " to " : "at most ") +
-        max +
-        " characters.",
-    );
-  }
-  return trimmed || null;
-}
-// Normalize the email and check bcrypt's password byte limit.
-function credentials(body, min = 1) {
-  const email = clean(body.email, "Email", 254, 1).toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-    fail(400, "Enter a valid email address.");
-  const password = body.password;
-  if (
-    typeof password !== "string" ||
-    password.length < min ||
-    Buffer.byteLength(password) > 72 ||
-    password.includes("\0")
-  ) {
-    fail(
-      400,
-      "Password must be at least " + min + " characters and at most 72 bytes.",
-    );
-  }
-  return { email, password };
-}
-// Parse an ID in the PostgreSQL integer range.
-function parseId(id) {
-  return typeof id === "string" &&
-    /^[1-9]\d{0,9}$/.test(id) &&
-    Number(id) <= 2147483647
-    ? Number(id)
-    : null;
-}
 // Validate a new pet or a partial update.
 function petInput(body, partial = false) {
   const keys = ["name", "species", "breed", "birthDate", "notes"];
@@ -162,7 +83,7 @@ export function accountRoutes(pool, secret, allowFixtures) {
   function session(user) {
     return {
       user: userDto(user),
-      token: jwt.sign({ role: user.role }, secret, {
+      token: jwt.sign({ role: user.role, ver: user.session_version }, secret, {
         ...tokenOptions,
         algorithm: "HS256",
         subject: String(user.user_id),
@@ -175,13 +96,13 @@ export function accountRoutes(pool, secret, allowFixtures) {
     const token = /^Bearer ([^\s]+)$/i.exec(
       req.get("Authorization") || "",
     )?.[1];
-    let id;
+    let id, version;
     try {
-      if (token)
-        id = parseId(
-          jwt.verify(token, secret, { ...tokenOptions, algorithms: ["HS256"] })
-            .sub,
-        );
+      if (token) {
+        const claims = jwt.verify(token, secret, { ...tokenOptions, algorithms: ["HS256"] });
+        id = parseId(claims.sub);
+        version = claims.ver ?? 0;
+      }
     } catch {
       /* An invalid token is treated like a missing one. */
     }
@@ -192,7 +113,8 @@ export function accountRoutes(pool, secret, allowFixtures) {
       "SELECT " + userFields + " FROM users WHERE user_id=$1",
       [id],
     );
-    if (!user || fixtureBlocked(user.email))
+    if (!user || user.account_status !== "ACTIVE" ||
+        user.session_version !== version || fixtureBlocked(user.email))
       fail(401, "Sign in again to continue.");
     req.accountUser = user;
     next();
@@ -245,6 +167,7 @@ export function accountRoutes(pool, secret, allowFixtures) {
       if (
         !(await bcrypt.compare(password, user?.password_hash || dummyHash)) ||
         !user ||
+        user.account_status !== "ACTIVE" ||
         fixtureBlocked(user.email)
       ) {
         fail(401, "Email or password is incorrect.");
@@ -258,6 +181,7 @@ export function accountRoutes(pool, secret, allowFixtures) {
     /* Return the current public user profile. */ (req, res) =>
       send(res, userDto(req.accountUser)),
   );
+  registerAdminRoutes(router, pool, authenticate, { allowFixtures, fixtureBlocked });
   router.use("/pets", authenticate, customer);
   router.get(
     "/pets",

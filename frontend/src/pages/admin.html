@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Account administration — PawInn</title>
+    <link rel="icon" href="/assets/icons/paw.svg" />
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script defer src="/assets/app.js"></script>
+  </head>
+  <body x-data="shell" data-page="admin">
+    <!-- include:header -->
+    <main id="main" class="wrap pb-16" x-data="admin">
+      <div class="page-intro"><h1>Account administration</h1></div>
+      <p class="notice" x-show="!$store.portal.ready" x-cloak>Checking your session…</p>
+      <div class="notice my-4" x-show="$store.portal.error" x-cloak>
+        <p x-text="$store.portal.error" role="alert"></p>
+        <button class="text-link" @click="$store.portal.refresh()">Try again</button>
+      </div>
+      <div class="empty" x-show="$store.portal.ready && $store.portal.user?.role !== 'ADMIN'" x-cloak>
+        <h2>Administrator access required</h2>
+        <p>Sign in with an administrator account to manage accounts and review changes.</p>
+        <a href="/pages/login.html" class="btn btn-dark">Sign in</a>
+      </div>
+
+      <section x-show="$store.portal.user?.role === 'ADMIN'" x-cloak aria-label="Account management">
+        <div class="flex flex-wrap items-center justify-between gap-4 mb-5">
+          <div class="tabs" aria-label="Admin views">
+            <button type="button" :class="{selected: view === 'accounts'}" :aria-pressed="view === 'accounts'"
+              :disabled="busy" @click="view = 'accounts'; search()">Accounts</button>
+            <button type="button" :class="{selected: view === 'audit'}" :aria-pressed="view === 'audit'"
+              :disabled="busy" @click="openAudit()">Audit history</button>
+          </div>
+          <button class="btn btn-dark" type="button" x-show="view === 'accounts' && !showCreate"
+            :disabled="busy" @click="showCreate = true; $nextTick(() => $refs.staffName.focus())">Create staff account</button>
+        </div>
+        <p class="error mb-5" role="alert" x-show="error" x-text="error"></p>
+
+        <div x-show="view === 'accounts'">
+          <form class="card padded mb-5" x-show="showCreate" @submit.prevent="submitStaff()" autocomplete="off">
+            <h2 class="text-2xl mb-4">Create staff account</h2>
+            <div class="grid sm:grid-cols-3 gap-4">
+              <label class="text-sm font-semibold">Full name
+                <input x-ref="staffName" x-model="staff.name" type="text" autocomplete="off" required minlength="2" maxlength="80" />
+              </label>
+              <label class="text-sm font-semibold">Email
+                <input x-model="staff.email" type="email" autocomplete="off" required maxlength="254" />
+              </label>
+              <label class="text-sm font-semibold">Initial password
+                <input x-model="staff.password" type="password" autocomplete="new-password" required minlength="12" maxlength="72"
+                  aria-describedby="staff-password-help" />
+                <span class="text-xs muted" id="staff-password-help">Use at least 12 characters.</span>
+              </label>
+            </div>
+            <div class="flex flex-wrap gap-3 mt-4">
+              <button class="btn btn-dark" type="submit" :disabled="busy">Create account</button>
+              <button class="btn btn-outline" type="button" :disabled="busy" @click="closeCreate()">Cancel</button>
+            </div>
+          </form>
+
+          <form class="card padded mb-5 grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-4" @submit.prevent="search()">
+            <label class="text-sm font-semibold">Name or email
+              <input x-model="filters.q" type="search" maxlength="254" placeholder="Search accounts" />
+            </label>
+            <label class="text-sm font-semibold">Role
+              <select x-model="filters.role">
+                <option value="">All roles</option>
+                <option value="CUSTOMER">Customer</option>
+                <option value="STAFF">Staff</option>
+                <option value="ADMIN">Administrator</option>
+              </select>
+            </label>
+            <label class="text-sm font-semibold">Status
+              <select x-model="filters.status">
+                <option value="">All statuses</option>
+                <option value="ACTIVE">Active</option>
+                <option value="SUSPENDED">Suspended</option>
+              </select>
+            </label>
+            <button class="btn btn-dark" type="submit" :disabled="busy">Search</button>
+          </form>
+
+          <div class="card" x-show="accounts.length">
+            <div class="table-wrap">
+              <table>
+                <caption class="sr-only">Account search results</caption>
+                <thead><tr><th scope="col">Account</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead>
+                <tbody>
+                  <template x-for="account in accounts" :key="account.id">
+                    <tr>
+                      <td><p class="font-semibold" x-text="account.name"></p><p class="text-xs muted" x-text="account.email"></p></td>
+                      <td x-text="roles[account.role]"></td>
+                      <td><span class="badge" :class="account.status === 'ACTIVE' ? 'badge-success' : 'badge-declined'"
+                        x-text="statuses[account.status]"></span></td>
+                      <td>
+                        <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+                          <button type="button" class="text-link" :disabled="busy" x-show="account.role === 'CUSTOMER'"
+                            @click="change(account, {role: 'STAFF'}, 'Grant staff access')">Grant staff access</button>
+                          <button type="button" class="text-link" :disabled="busy" x-show="account.role === 'STAFF'"
+                            @click="change(account, {role: 'CUSTOMER'}, 'Revoke staff access')">Revoke staff access</button>
+                          <button type="button" class="text-link" :disabled="busy" x-show="account.role !== 'ADMIN' && account.status === 'ACTIVE'"
+                            @click="change(account, {status: 'SUSPENDED'}, 'Suspend account')">Suspend</button>
+                          <button type="button" class="text-link" :disabled="busy" x-show="account.role !== 'ADMIN' && account.status === 'SUSPENDED'"
+                            @click="change(account, {status: 'ACTIVE'}, 'Reactivate account')">Reactivate</button>
+                          <button type="button" class="text-link" :disabled="busy" @click="openAudit(account)">View history</button>
+                        </div>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p class="notice" x-show="!busy && !accounts.length && !error">No accounts match your search.</p>
+          <button class="btn btn-outline mt-4" type="button" x-show="nextAccount" :disabled="busy"
+            @click="run(() => fetchAccounts(true))">Show more accounts</button>
+        </div>
+
+        <div x-show="view === 'audit'">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-4" x-show="auditTarget">
+            <h2 class="text-xl" x-text="'History for ' + (auditTarget?.name || '')"></h2>
+            <button type="button" class="text-link" :disabled="busy" @click="openAudit()">Show all accounts</button>
+          </div>
+          <div class="card" x-show="audit.length">
+            <div class="table-wrap">
+              <table>
+                <caption class="sr-only">Account audit history in Bangkok time</caption>
+                <thead><tr><th scope="col">Date and time (Bangkok)</th><th scope="col">Changed by</th><th scope="col">Account</th><th scope="col">Change</th></tr></thead>
+                <tbody>
+                  <template x-for="entry in audit" :key="entry.id">
+                    <tr>
+                      <td><time :datetime="entry.createdAt" x-text="timeLabel(entry.createdAt)"></time></td>
+                      <td><p x-text="entry.actor.name"></p><p class="text-xs muted" x-text="entry.actor.email"></p></td>
+                      <td><p x-text="entry.target.name"></p><p class="text-xs muted" x-text="entry.target.email"></p></td>
+                      <td><p class="font-semibold" x-text="actions[entry.action]"></p><p class="text-xs muted" x-text="detailsLabel(entry.details)"></p></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p class="notice" x-show="!busy && !audit.length && !error">No account changes recorded.</p>
+          <button class="btn btn-outline mt-4" type="button" x-show="nextAudit" :disabled="busy"
+            @click="run(() => fetchAudit(true))">Show older changes</button>
+        </div>
+        <p class="notice mt-4" role="status" x-show="busy">Working…</p>
+      </section>
+    </main>
+    <!-- include:footer -->
+  </body>
+</html>

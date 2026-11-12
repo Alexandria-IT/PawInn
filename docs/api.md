@@ -28,13 +28,17 @@ Account, Room and Booking endpoints below are implemented. Update this file when
 | POST /api/pets | Create an owned pet |
 | PATCH /api/pets/:id | Update an owned pet |
 | DELETE /api/pets/:id | Delete an owned pet only when no booking references it; preserve booking history |
+| GET /api/admin/users | Admin searches by name/email and filters by role or status; supports `before` pagination |
+| POST /api/admin/users | Admin creates a staff account |
+| PATCH /api/admin/users/:userId | Admin grants or revokes staff access, or suspends/reactivates an account |
+| GET /api/admin/audit | Admin reads account changes with actor, target, details and time; supports `userId` and `before` |
 
 Account issues an HS256 JWT with a one-hour expiry, issuer `pawinn-account`, audience `pawinn` and the string user ID in `sub`. Use `Authorization: Bearer <token>` for protected routes. A successful login or registration returns `{data: {token, user}}`. Account checks the current database role rather than relying solely on the token claim. Foreign and missing pets return 404; a referenced pet deletion returns 409.
 
 Public user: `{id, name, email, phone, role}`; never return password hashes.
 Pet: `{id, ownerId, name, species, breed, birthDate, notes}`.
-Roles: CUSTOMER, STAFF. Species: Dog, Cat.
-Provision staff through the operator CLI; registration creates customers only.
+Roles: CUSTOMER, STAFF, ADMIN. Species: Dog, Cat.
+Account state changes revoke existing sessions across Account, Room and Booking. Bootstrap the first Admin through the operator CLI; staff accounts are created by an Admin and public registration creates customers only.
 Account and booking owners coordinate pets/bookings foreign keys and active-booking checks before changing a booked pet's species. A normal FK prevents deleting a referenced pet; reject that deletion rather than cascading away booking history.
 
 ## Member 3: room
@@ -58,16 +62,23 @@ Deactivation returns 409 when a room has a current or upcoming reservation. All 
 | POST /api/bookings | Accept petId, roomTypeId, start, end, and optional specialCare; choose an available physical room and calculate the price |
 | GET /api/bookings | Customers see their own; staff can see all; support optional petId/status filters |
 | GET /api/bookings/:id | Return an owned booking, or any booking for staff, including timeline and cancellation state |
+| PATCH /api/bookings/:id/hold | Edit a customer’s unpaid hold with the same fields as reservation; keep the reference and original expiry |
 | POST /api/bookings/:id/checkout | Accept outcome SUCCESS or FAILED and a payment attempt ID; simulate payment, safely handle retries |
 | POST /api/bookings/:id/cancellations | Accept reason; create a customer request for an eligible booking |
 | GET /api/cancellations | Staff lists requests; support optional status filter |
 | PATCH /api/cancellations/:id | Staff submits decision APPROVED or DECLINED plus notes |
-| POST /api/bookings/:id/reschedules | Customer requests new start and end dates with a reason |
+| GET /api/bookings/:id/reschedules/quote | Quote new dates with `start` and `end`; returns original total, new total and difference |
+| POST /api/bookings/:id/reschedules | Customer submits `start`, `end`, `reason` and the quoted `confirmedTotal` |
 | PATCH /api/bookings/:id/reschedules/:requestId | Staff approves or declines with a review note |
 | POST /api/bookings/:id/updates | Staff posts an update for a confirmed stay using multipart form data |
 | GET /api/bookings/updates | Customer reads their own updates, newest first, with optional before cursor |
 | GET /api/bookings/updates/:id/photo | Booking owner fetches the private image |
-| PATCH /api/bookings/:id/complete | Staff completes an eligible stay after check-out |
+| GET /api/bookings/:id/care | Staff or owner reads the stay’s Bangkok calendar, including missing reports |
+| PATCH /api/bookings/:id/care/arrival or /pickup | Staff records actual arrival or pickup (`at` ISO timestamp; defaults to now). Pickup completes the stay. |
+| PUT /api/bookings/:id/care/days/:date/report | Staff publishes or corrects a daily report; multipart `message` and `photo` fields |
+| POST /api/bookings/:id/care/days/:date/events | Staff records a care event immediately |
+| PATCH /api/bookings/:id/care/days/:date/events/:eventId | Staff corrects a care event |
+| GET /api/bookings/:id/care/photos/:photoId | Owner or staff loads the private report image; only staff can read superseded photos |
 
 Booking response: `{id, userId, petId, roomId, roomTypeId, start, end, nightlyRate, total, status, paymentStatus, refundStatus, createdAt}`; responses also include room number, room name, pet name, customer name, specialCare, hold expiry in epoch milliseconds, logs and the latest cancellation and reschedule. The reschedule includes its ID, status, original and requested dates, reason, and staff note.
 Booking statuses: PENDING, CONFIRMED, CANCELLED, COMPLETED.
@@ -77,9 +88,11 @@ Refund statuses: NOT_REQUESTED, PENDING, SUCCESS, FAILED.
 
 Pending reservations hold inventory for 15 minutes, then expire to CANCELLED if unpaid. Reject overlapping bookings for a room or pet. Failed payment can be retried before expiry. Repeated successful checkout/review must not charge/refund twice. Approved cancellation records a full mock refund for a paid booking and releases the room; declined requests keep it confirmed.
 
-Customers can request a date change for an upcoming confirmed stay. The new check-in must be after today and differ from the original check-in. The pet, room type, stay length, and payment are fixed. Each booking can have one pending change request, either cancellation or reschedule. A pending reschedule keeps the original dates reserved. Approval checks current availability and moves the booking to an available room of the same type, preferring its current room. A conflict leaves the original booking and pending request in place. A decline records the decision and keeps the original dates.
+Customers can request a new check-in and/or check-out for an upcoming confirmed stay. Quotes use the booked nightly rate and customers must confirm the new total. The original room and dates remain reserved while a request is pending. Approval rechecks that same physical room, ignores the booking’s own occupied nights, then updates dates, total and any simulated adjustment in one transaction. The booking reference stays the same. A conflict leaves the booking and request unchanged. Declining either type of change request requires a reason.
 
 Special-care instructions are optional plain text up to 2,000 characters. Staff updates accept a message of up to 2,000 characters, one JPEG, PNG, or WebP photo up to 2 MiB, or both. The feed returns `{updates, nextBefore}`. Each entry includes `id`, `bookingId`, `petName`, `message`, `createdAt`, and `hasPhoto`. Photo requests require the same customer bearer token as the feed. Photos are stored in PostgreSQL and served with caching disabled.
+
+Daily care is separate from the informal update feed. Daily reports require a description and at least one photo on first publication. Events have Bangkok local `time`, `careType`, `action`, `observation` and `status` (`PERFORMED` or `NOT_PERFORMED`). When care was not performed, `reason` and `followUp` are required. Staff corrections retain prior values, the editor and the edit time. Customer history stays available after pickup.
 
 ## Database mapping and fixtures
 
@@ -91,4 +104,4 @@ The sample accounts use public demo password `PawInnDemo123!`, stored as bcrypt 
 
 A customer signs in, loads their pets, browses room types, asks booking for availability, creates a reservation, completes mock checkout and reads booking history. Then the customer requests cancellation and staff reviews it.
 
-Only an isolated test deployment enables fixture accounts. In normal operation, create accounts through signup or the local staff CLI.
+Only an isolated test deployment enables fixture accounts. In normal operation, create customer accounts through signup and staff accounts from the Admin portal.
