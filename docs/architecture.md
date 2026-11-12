@@ -16,6 +16,8 @@ Booking allocates available physical rooms and calculates prices in PostgreSQL. 
 
 ## Delivery
 
-GitHub Actions and Jenkins execute `sh scripts/verify.sh` against a disposable Compose project. Jenkins tags the application images with the checked-out commit and deploys those same images on main on the same Docker engine. Configure a Linux multibranch Jenkins job with Docker Compose and curl, plus a secret-file credential named `pawinn-env` containing the deployment environment settings. The deployment project is named pawinn and preserves its database volume. Set the deployment port in that credential if necessary.
+GitHub Actions and Jenkins execute `sh scripts/verify.sh` against a disposable Compose project. Jenkins tags the application images with the checked-out commit and deploys those same images on main on the same Docker engine. Configure the Jenkins job with a Secret file credential named `pawinn-env`. Use the same PostgreSQL user, password, and database name as the existing PawInn `.env` when Jenkins takes over an existing installation. The local Jenkins image also accepts those settings in `$JENKINS_HOME/pawinn-local.env` when the credential is absent. On a fresh installation it generates and saves its own settings.
+
+Jenkins deploys to the `pawinn` Compose project. Before replacing the application containers, it verifies that the deployment settings can connect to the existing PostgreSQL service. If the check fails, correct the Jenkins settings to match the database. Changing `POSTGRES_PASSWORD` in an environment file only affects database initialization on an empty volume.
 
 Run the verification script inside the assigned `tuchsanai/devtools:2569_1` course container using the instructor's startup instructions. Keep the commit, test output and Jenkins logs as evidence. Public internet hosting would need TLS and an operational review; the default setup is a local course deployment.

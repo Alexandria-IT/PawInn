@@ -6,7 +6,7 @@
 //   image tagged with this commit, starts a disposable stack, runs SQL + HTTP tests, removes it.
 // - "Deploy" starts exactly those tested images as project "pawinn" -> http://localhost:8080
 //   Settings come from the Jenkins credential "pawinn-env" (Secret file) when it exists,
-//   otherwise from a local demo env (.env.example + a generated JWT_SECRET kept in JENKINS_HOME).
+//   otherwise from the local settings file in JENKINS_HOME.
 // - Triggers: GitHub webhook when Jenkins is reachable, otherwise polling every 2 minutes.
 
 pipeline {
@@ -65,25 +65,30 @@ pipeline {
                             sh 'cp "$DEPLOY_ENV" deploy.env && chmod 600 deploy.env'
                         }
                         echo 'Using settings from the pawinn-env credential'
-                    } catch (err) {
-                        echo 'No pawinn-env credential: using the local demo env (.env.example + generated JWT_SECRET)'
+                    } catch (org.jenkinsci.plugins.credentialsbinding.impl.CredentialNotFoundException err) {
+                        echo 'No pawinn-env credential: using Jenkins local deployment settings'
                         sh '''
+                            set +x
                             set -eu
+                            umask 077
                             LOCAL_ENV="$JENKINS_HOME/pawinn-local.env"
                             if [ ! -f "$LOCAL_ENV" ]; then
-                                SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
-                                sed "s/^JWT_SECRET=.*/JWT_SECRET=$SECRET/" .env.example > "$LOCAL_ENV"
-                                chmod 600 "$LOCAL_ENV"
+                                if docker volume inspect pawinn_postgres_data >/dev/null 2>&1; then
+                                    echo 'PawInn already has a database volume. Configure pawinn-env with its existing settings.' >&2
+                                    exit 1
+                                fi
+                                DB_PASSWORD=$(node -p "require('node:crypto').randomBytes(32).toString('hex')")
+                                JWT_SECRET_VALUE=$(node -p "require('node:crypto').randomBytes(32).toString('hex')")
+                                sed -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$DB_PASSWORD/" \
+                                    -e "s/^JWT_SECRET=.*/JWT_SECRET=$JWT_SECRET_VALUE/" .env.example > "$LOCAL_ENV.tmp"
+                                mv "$LOCAL_ENV.tmp" "$LOCAL_ENV"
                             fi
                             cp "$LOCAL_ENV" deploy.env
+                            chmod 600 deploy.env
                         '''
                     }
                 }
-                sh '''
-                    set -eu
-                    docker compose --env-file deploy.env -p pawinn up -d --no-build --wait --remove-orphans
-                    docker compose --env-file deploy.env -p pawinn ps
-                '''
+                sh 'sh scripts/deploy.sh deploy.env'
             }
         }
 
