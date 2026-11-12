@@ -212,6 +212,7 @@ async function verifyBookings() {
             roomTypeId: dog.id,
             start,
             end,
+            specialCare: "Offer a quiet rest after each meal.",
           }),
         });
         return {
@@ -250,6 +251,8 @@ async function verifyBookings() {
     staff.token,
     409,
   );
+  assert.equal(booking.specialCare, "Offer a quiet rest after each meal.");
+  await postUpdate(booking.id, staff.token, "Too early", null, 409);
   const checkoutPath = "/api/bookings/" + booking.id + "/checkout";
   const failedAttempt = {
     outcome: "FAILED",
@@ -292,6 +295,14 @@ async function verifyBookings() {
     ).length,
     1,
   );
+  const staffBooking = await request(
+    "/api/bookings/" + confirmed.id,
+    "GET",
+    null,
+    staff.token,
+  );
+  assert.equal(staffBooking.specialCare, booking.specialCare);
+  await verifyPetUpdates(confirmed, p, foreign, staff);
   await verifyRescheduling(confirmed, p, foreign, staff);
   const cancellationPath = "/api/bookings/" + booking.id + "/cancellations";
   const firstRequest = await request(
@@ -371,6 +382,103 @@ async function verifyBookings() {
   );
 }
 
+// Post text or a photo through the same multipart route the staff dashboard uses.
+async function postUpdate(bookingId, token, message, photo, expected = 201) {
+  const form = new FormData();
+  form.set("message", message);
+  if (photo) form.set("photo", photo, "test-photo.png");
+  const response = await fetch(
+    origin + "/api/bookings/" + bookingId + "/updates",
+    {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token },
+      body: form,
+      signal: AbortSignal.timeout(15000),
+    },
+  );
+  const result = await response.json();
+  assert.equal(response.status, expected, result.message);
+  return result.data;
+}
+
+// Check that the owner receives text and photos while another customer cannot access either.
+async function verifyPetUpdates(booking, owner, other, staff) {
+  const feedPath = "/api/bookings/updates";
+  await request(feedPath, "GET", null, null, 401);
+  await request(feedPath, "GET", null, staff.token, 403);
+  await postUpdate(booking.id, owner.token, "I cannot post this.", null, 403);
+  await postUpdate(booking.id, staff.token, "   ", null, 400);
+  await postUpdate(
+    booking.id,
+    staff.token,
+    "",
+    new Blob(["Not an image"], { type: "image/png" }),
+    400,
+  );
+  await postUpdate(
+    booking.id,
+    staff.token,
+    "",
+    new Blob([new Uint8Array(2 * 1024 * 1024 + 1)], { type: "image/png" }),
+    413,
+  );
+
+  const message = "Care completed. Your pet finished their meal.";
+  const written = await postUpdate(booking.id, staff.token, message);
+  assert.equal(written.hasPhoto, false);
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jLZkAAAAASUVORK5CYII=",
+    "base64",
+  );
+  const photographed = await postUpdate(
+    booking.id,
+    staff.token,
+    "",
+    new Blob([png], { type: "image/png" }),
+  );
+  assert.equal(photographed.hasPhoto, true);
+  const both = await postUpdate(
+    booking.id,
+    staff.token,
+    "Resting after lunch.",
+    new Blob([png], { type: "image/png" }),
+  );
+  assert.equal(both.hasPhoto, true);
+  assert.equal(both.message, "Resting after lunch.");
+
+  const feed = await request(feedPath, "GET", null, owner.token);
+  assert.deepEqual(
+    feed.updates.map(/* Check newest-first ordering. */ (update) => update.id),
+    [both.id, photographed.id, written.id],
+  );
+  assert.equal(feed.updates[2].message, message);
+  assert.equal(feed.updates[2].petName, booking.petName);
+  assert.equal(feed.updates[2].bookingId, booking.id);
+  assert.equal(
+    (await request(feedPath + "?before=" + both.id, "GET", null, owner.token))
+      .updates.length,
+    2,
+  );
+  assert.deepEqual(
+    (await request(feedPath, "GET", null, other.token)).updates,
+    [],
+  );
+  const photoPath = feedPath + "/" + photographed.id + "/photo";
+  await request(photoPath, "GET", null, null, 401);
+  await request(photoPath, "GET", null, other.token, 404);
+  const image = await fetch(origin + photoPath, {
+    headers: { Authorization: "Bearer " + owner.token },
+    signal: AbortSignal.timeout(15000),
+  });
+  assert.equal(image.status, 200);
+  assert.equal(image.headers.get("content-type"), "image/png");
+  assert.equal(image.headers.get("cache-control"), "no-store");
+  assert.deepEqual(Buffer.from(await image.arrayBuffer()), png);
+  console.log(
+    "PASS: special-care instructions, staff-only updates, photo validation, and private customer inbox.",
+  );
+}
+
 // Exercise both directions, declined requests, and conflicts on approval.
 async function verifyRescheduling(confirmed, customer, foreign, staff) {
   const path = "/api/bookings/" + confirmed.id + "/reschedules";
@@ -406,6 +514,7 @@ async function verifyRescheduling(confirmed, customer, foreign, staff) {
   assert.equal(moved.end, earlier.end);
   assert.equal(moved.roomId, confirmed.roomId);
   assert.equal(moved.total, confirmed.total);
+  assert.equal(moved.specialCare, confirmed.specialCare);
   assert.equal(moved.paymentStatus, "SUCCESS");
   assert.equal(moved.reschedule.originalStart, confirmed.start);
   assert.equal(moved.reschedule.status, "APPROVED");

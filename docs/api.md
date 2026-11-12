@@ -12,7 +12,7 @@ Account, Room and Booking endpoints below are implemented. Update this file when
 - Success: `{"data": ...}`. Error: `{"message": "A useful explanation"}`.
 - Use 201 for creation; 200 for normal success; 204 for successful deletion; 400 invalid input; 401 unauthenticated; 403 forbidden; 404 missing; 409 conflicting state.
 - Each service exposes `GET /health`.
-- All three services connect to the shared `pawinn` database. The SQL already defines matching integer PK/FK types across all seven tables; API IDs remain strings at the HTTP boundary.
+- All three services connect to the shared `pawinn` database. The SQL already defines matching integer PK/FK types across the shared tables; API IDs remain strings at the HTTP boundary.
 - Services primarily write their own tables. Shared reads/joins are allowed for ownership, availability and prices; internal HTTP lookups are optional rather than required.
 - The frontend calls these APIs on the same origin through Nginx.
 
@@ -55,7 +55,7 @@ Deactivation returns 409 when a room has a current or upcoming reservation. All 
 | Method/path | Behavior |
 | --- | --- |
 | GET /api/availability?start=...&end=... | Return `[{roomTypeId, available}]`; optionally filter species |
-| POST /api/bookings | Accept petId, roomTypeId, start, end; choose an available physical room and calculate the price |
+| POST /api/bookings | Accept petId, roomTypeId, start, end, and optional specialCare; choose an available physical room and calculate the price |
 | GET /api/bookings | Customers see their own; staff can see all; support optional petId/status filters |
 | GET /api/bookings/:id | Return an owned booking, or any booking for staff, including timeline and cancellation state |
 | POST /api/bookings/:id/checkout | Accept outcome SUCCESS or FAILED and a payment attempt ID; simulate payment, safely handle retries |
@@ -64,9 +64,12 @@ Deactivation returns 409 when a room has a current or upcoming reservation. All 
 | PATCH /api/cancellations/:id | Staff submits decision APPROVED or DECLINED plus notes |
 | POST /api/bookings/:id/reschedules | Customer requests new start and end dates with a reason |
 | PATCH /api/bookings/:id/reschedules/:requestId | Staff approves or declines with a review note |
+| POST /api/bookings/:id/updates | Staff posts an update for a confirmed stay using multipart form data |
+| GET /api/bookings/updates | Customer reads their own updates, newest first, with optional before cursor |
+| GET /api/bookings/updates/:id/photo | Booking owner fetches the private image |
 | PATCH /api/bookings/:id/complete | Staff completes an eligible stay after check-out |
 
-Booking response: `{id, userId, petId, roomId, roomTypeId, start, end, nightlyRate, total, status, paymentStatus, refundStatus, createdAt}`; responses also include room number, room name, pet name, customer name, hold expiry in epoch milliseconds, logs and the latest cancellation and reschedule. The reschedule includes its ID, status, original and requested dates, reason, and staff note.
+Booking response: `{id, userId, petId, roomId, roomTypeId, start, end, nightlyRate, total, status, paymentStatus, refundStatus, createdAt}`; responses also include room number, room name, pet name, customer name, specialCare, hold expiry in epoch milliseconds, logs and the latest cancellation and reschedule. The reschedule includes its ID, status, original and requested dates, reason, and staff note.
 Booking statuses: PENDING, CONFIRMED, CANCELLED, COMPLETED.
 Payment statuses: UNPAID, SUCCESS, FAILED.
 Cancellation statuses: PENDING, APPROVED, DECLINED.
@@ -75,6 +78,8 @@ Refund statuses: NOT_REQUESTED, PENDING, SUCCESS, FAILED.
 Pending reservations hold inventory for 15 minutes, then expire to CANCELLED if unpaid. Reject overlapping bookings for a room or pet. Failed payment can be retried before expiry. Repeated successful checkout/review must not charge/refund twice. Approved cancellation records a full mock refund for a paid booking and releases the room; declined requests keep it confirmed.
 
 Customers can request a date change for an upcoming confirmed stay. The new check-in must be after today and differ from the original check-in. The pet, room type, stay length, and payment are fixed. Each booking can have one pending change request, either cancellation or reschedule. A pending reschedule keeps the original dates reserved. Approval checks current availability and moves the booking to an available room of the same type, preferring its current room. A conflict leaves the original booking and pending request in place. A decline records the decision and keeps the original dates.
+
+Special-care instructions are optional plain text up to 2,000 characters. Staff updates accept a message of up to 2,000 characters, one JPEG, PNG, or WebP photo up to 2 MiB, or both. The feed returns `{updates, nextBefore}`. Each entry includes `id`, `bookingId`, `petName`, `message`, `createdAt`, and `hasPhoto`. Photo requests require the same customer bearer token as the feed. Photos are stored in PostgreSQL and served with caching disabled.
 
 ## Database mapping and fixtures
 

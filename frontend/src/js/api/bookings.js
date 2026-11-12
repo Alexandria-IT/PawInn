@@ -6,8 +6,8 @@ const call = (path, method = "GET", body) =>
 // Fetch bookings visible to the signed-in account.
 export const listBookings = () => call("bookings");
 // Request a hold for the pet, room type, and dates.
-export const reserve = (petId, roomTypeId, start, end) =>
-  call("bookings", "POST", { petId, roomTypeId, start, end });
+export const reserve = (petId, roomTypeId, start, end, specialCare) =>
+  call("bookings", "POST", { petId, roomTypeId, start, end, specialCare });
 // Submit a simulated checkout attempt.
 export const pay = (id, outcome, attemptId) =>
   call("bookings/" + encodeURIComponent(id) + "/checkout", "POST", {
@@ -45,6 +45,30 @@ export const reviewReschedule = (bookingId, requestId, approved, notes) =>
       notes,
     },
   );
+// Load the latest pet updates or the next page of the customer's feed.
+export const listPetUpdates = (before) =>
+  call(
+    "bookings/updates" +
+      (before ? "?before=" + encodeURIComponent(before) : ""),
+  );
+// Fetch an update's photo with the same session as the feed.
+export const fetchPetUpdatePhoto = (id, signal) =>
+  request("bookings/updates/" + encodeURIComponent(id) + "/photo", {
+    token: getToken(),
+    asBlob: true,
+    signal,
+  });
+// Send an update as a form so the photo can be uploaded as binary.
+export function postPetUpdate(bookingId, message, photo) {
+  const form = new FormData();
+  form.set("message", message);
+  if (photo) form.set("photo", photo);
+  return call(
+    "bookings/" + encodeURIComponent(bookingId) + "/updates",
+    "POST",
+    form,
+  );
+}
 // Mark an eligible stay complete.
 export const complete = (id) =>
   call("bookings/" + encodeURIComponent(id) + "/complete", "PATCH");

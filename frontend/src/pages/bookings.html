@@ -217,6 +217,13 @@
               <div class="summary-line border-t border-stone-200 mt-2">
                 <span>Total</span><strong x-text="money(detail.total)"></strong>
               </div>
+              <div x-show="detail.specialCare" class="notice my-5">
+                <p class="font-semibold mb-1">Special-care instructions</p>
+                <p
+                  class="whitespace-pre-wrap break-words"
+                  x-text="detail.specialCare"
+                ></p>
+              </div>
               <div x-show="detail.cancellation" class="notice my-5">
                 <p class="font-semibold mb-1">
                   Cancellation request ·

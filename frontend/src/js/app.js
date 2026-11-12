@@ -11,6 +11,7 @@ import rooms from "./pages/rooms.js";
 import bookings from "./pages/bookings.js";
 import checkout from "./pages/checkout.js";
 import staff from "./pages/staff-dashboard.js";
+import petUpdates, { petUpdatePhoto } from "./pages/pet-updates.js";
 Alpine.plugin(focus);
 Alpine.store("portal", portal());
 Alpine.store("ui", ui());
@@ -23,6 +24,8 @@ for (const [name, component] of Object.entries({
   bookings,
   checkout,
   staff,
+  petUpdates,
+  petUpdatePhoto,
 }))
   Alpine.data(name, component);
 installAlerts(Alpine);

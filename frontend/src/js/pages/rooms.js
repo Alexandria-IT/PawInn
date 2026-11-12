@@ -15,6 +15,7 @@ export default () => ({
   checked: false,
   selected: null,
   petId: "",
+  specialCare: "",
   reserveError: "",
   busy: false,
   // Restore search filters from the URL.
@@ -86,6 +87,7 @@ export default () => ({
     }
     this.selected = room;
     this.petId = this.suitablePets[0]?.id || "";
+    this.specialCare = "";
     this.reserveError = "";
   },
   // Reserve the room and open checkout.
@@ -98,6 +100,7 @@ export default () => ({
         this.selected.id,
         this.start,
         this.end,
+        this.specialCare,
       );
       location.href = `/pages/checkout.html?booking=${encodeURIComponent(b.id)}`;
     } catch (error) {

@@ -12,11 +12,12 @@ const pages = [
     "bookings",
     "checkout",
     "staff-dashboard",
+    "pet-updates",
   ].map(
     /* Convert each page name to its built path. */ (p) => `pages/${p}.html`,
   ),
 ];
-test("all eight built pages resolve static navigation and local assets", /* Check that all built pages resolve their links and assets. */ async () => {
+test("all built pages resolve static navigation and local assets", /* Check that all built pages resolve their links and assets. */ async () => {
   for (const page of pages) {
     const html = await readFile(
       new URL(`../dist/${page}`, import.meta.url),

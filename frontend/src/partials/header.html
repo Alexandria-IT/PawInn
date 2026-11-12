@@ -71,6 +71,15 @@
         :aria-current="active('bookings')?'page':null"
         >My bookings</a
       >
+      <a
+        href="/pages/pet-updates.html"
+        class="nav-link"
+        x-show="$store.portal.user?.role==='CUSTOMER'"
+        x-cloak
+        :class="{'active':active('pet-updates')}"
+        :aria-current="active('pet-updates')?'page':null"
+        >Pet Updates</a
+      >
     </nav>
     <div
       class="desktop-actions flex items-center gap-3"
@@ -168,6 +177,11 @@
     <a href="/">Home</a><a href="/pages/rooms.html">Our rooms</a
     ><a href="/pages/pets.html">My pets</a
     ><a href="/pages/bookings.html">My bookings</a>
+    <a
+      href="/pages/pet-updates.html"
+      x-show="$store.portal.user?.role==='CUSTOMER'"
+      >Pet Updates</a
+    >
     <a
       href="/pages/login.html"
       x-show="$store.portal.ready && !$store.portal.user"

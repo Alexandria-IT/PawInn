@@ -1,4 +1,9 @@
-import { review, reviewReschedule, complete } from "../api/bookings.js";
+import {
+  review,
+  reviewReschedule,
+  complete,
+  postPetUpdate,
+} from "../api/bookings.js";
 import { catalog, inventory, setActive } from "../api/rooms.js";
 import { today, toast } from "../helpers.js";
 // Create staff dashboard state and actions.
@@ -6,6 +11,10 @@ export default () => ({
   tab: "requests",
   query: "",
   target: null,
+  updateTarget: null,
+  updateMessage: "",
+  updateError: "",
+  sendingUpdate: false,
   reviewKind: "cancel",
   approved: true,
   note: "",
@@ -120,6 +129,41 @@ export default () => ({
       this.error = error.message;
     } finally {
       this.busy = false;
+    }
+  },
+  // Open the update form with the booking's care instructions.
+  openUpdate(booking) {
+    this.updateTarget = booking;
+    this.updateMessage = "";
+    this.updateError = "";
+    this.$refs.updatePhoto.value = "";
+  },
+  // Close the form after any send in progress finishes.
+  closeUpdate() {
+    if (!this.sendingUpdate) this.updateTarget = null;
+  },
+  // Post one update to the owner's inbox.
+  async submitUpdate() {
+    if (this.sendingUpdate) return;
+    const photo = this.$refs.updatePhoto.files[0];
+    if (photo?.size > 2 * 1024 * 1024) {
+      this.updateError = "Choose a photo up to 2 MB.";
+      return;
+    }
+    this.sendingUpdate = true;
+    this.updateError = "";
+    try {
+      await postPetUpdate(
+        this.updateTarget.id,
+        this.updateMessage.trim(),
+        photo,
+      );
+      this.updateTarget = null;
+      toast("Pet update sent.");
+    } catch (error) {
+      this.updateError = error.message;
+    } finally {
+      this.sendingUpdate = false;
     }
   },
   // Mark the stay complete and refresh the list.

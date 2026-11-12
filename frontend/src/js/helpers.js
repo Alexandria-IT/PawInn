@@ -53,6 +53,7 @@ export function nextPath(fallback = "/pages/bookings.html") {
       "/pages/pets.html",
       "/pages/rooms.html",
       "/pages/bookings.html",
+      "/pages/pet-updates.html",
       "/pages/checkout.html",
       "/pages/staff-dashboard.html",
     ];

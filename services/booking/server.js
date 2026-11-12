@@ -20,8 +20,12 @@ const startupConnectionErrors = new Set([
 
 // Apply the additive schema before accepting Booking requests.
 async function prepare(pool) {
-  const schema = await readFile(
+  const rescheduleSchema = await readFile(
     new URL("./reschedule-schema.sql", import.meta.url),
+    "utf8",
+  );
+  const updateSchema = await readFile(
+    new URL("./pet-updates-schema.sql", import.meta.url),
     "utf8",
   );
   // Docker can restart Booking and PostgreSQL at the same time.
@@ -29,7 +33,12 @@ async function prepare(pool) {
     try {
       await transaction(
         pool,
-        /* Serialize concurrent Booking startups. */ (db) => db.query(schema),
+        /* Apply both migrations under the shared inventory lock. */ async (
+          db,
+        ) => {
+          await db.query(rescheduleSchema);
+          await db.query(updateSchema);
+        },
       );
       return;
     } catch (error) {
@@ -56,6 +65,7 @@ await runService(import.meta.url, {
     "booking_logs",
     "cancellation_requests",
     "reschedule_requests",
+    "pet_updates",
     "rooms",
     "room_types",
     "pets",

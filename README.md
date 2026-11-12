@@ -1,6 +1,6 @@
 # PawInn
 
-PawInn is a pet hotel booking portal. The HTML/Tailwind/Alpine frontend talks to Account, Room and Booking Express services, backed by one shared PostgreSQL database. Customers manage pets, find available rooms, reserve stays, and request cancellation or rescheduling. Staff manage inventory and review requests. Checkout and refunds are simulated and collect no payment details.
+PawInn is a pet hotel booking portal. The HTML/Tailwind/Alpine frontend talks to Account, Room and Booking Express services, backed by one shared PostgreSQL database. Customers manage pets, find available rooms, reserve stays, and request cancellation or rescheduling. Staff manage inventory, review requests, and send pet updates with text or photos. Customers can leave special-care instructions when booking and read staff updates on the **Pet Updates** page. Checkout and refunds are simulated and collect no payment details.
 
 ## Run from scratch
 

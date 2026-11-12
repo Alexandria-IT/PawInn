@@ -8,6 +8,7 @@ import {
   stay,
   text,
 } from "../shared/runtime.js";
+import { registerUpdateRoutes } from "./updates.js";
 
 const showFixtures = /^(1|true)$/i.test(process.env.PAWINN_SEED_DEMO || "");
 const visibleCustomer = showFixtures
@@ -36,6 +37,7 @@ const selection = `
     b.check_out_date::text AS end,
     b.nightly_rate::float8 AS "nightlyRate",
     b.total_price::float8 AS total,
+    b.special_care AS "specialCare",
     b.status,
     b.created_at AS "createdAt",
     b.payment_status AS "paymentStatus",
@@ -139,6 +141,8 @@ async function availableRoom(
 
 // Register availability, booking, checkout, and request review routes.
 export function routes(router, pool, auth) {
+  // Register the inbox before the generic booking detail route.
+  registerUpdateRoutes(router, pool, auth, { getBooking: get, log });
   // Expire holds under the shared inventory lock.
   const expireHolds = () => transaction(pool, expire);
   router.get(
@@ -208,12 +212,18 @@ export function routes(router, pool, auth) {
     "/bookings",
     auth("CUSTOMER"),
     /* Validate a customer's reservation request. */ async (req, res) => {
-      const { petId, roomTypeId, start, end } = body(req, [
+      const { petId, roomTypeId, start, end, specialCare } = body(req, [
         "petId",
         "roomTypeId",
         "start",
         "end",
+        "specialCare",
       ]);
+      const careInstructions = text(
+        typeof specialCare === "string" ? specialCare.trim() : specialCare,
+        2000,
+        true,
+      );
       const requestedPetId = id(petId);
       const requestedRoomTypeId = id(roomTypeId);
       const owner = req.user.user_id;
@@ -250,8 +260,8 @@ export function routes(router, pool, auth) {
           const {
             rows: [created],
           } = await db.query(
-            `INSERT INTO bookings(user_id,pet_id,room_id,check_in_date,check_out_date,nightly_rate,total_price)
-        VALUES($1,$2,$3,$4::date,$5::date,$6::numeric,$6::numeric*($5::date-$4::date)) RETURNING booking_id`,
+            `INSERT INTO bookings(user_id,pet_id,room_id,check_in_date,check_out_date,nightly_rate,total_price,special_care)
+        VALUES($1,$2,$3,$4::date,$5::date,$6::numeric,$6::numeric*($5::date-$4::date),$7) RETURNING booking_id`,
             [
               owner,
               requestedPetId,
@@ -259,6 +269,7 @@ export function routes(router, pool, auth) {
               start,
               end,
               roomType.price_per_night,
+              careInstructions,
             ],
           );
           await log(
