@@ -1,7 +1,5 @@
-# account service tests
+# Account API tests
 
-Owner: Member 2. Add API tests when implementing the service; there are no backend API tests yet. Shared schema/data checks already live in `database/tests/verify.sql`.
+The tests use a disposable, seeded PostgreSQL database named pawinn_test. Follow the [Account test setup](../README.md#run-api-tests), set ACCOUNT_TEST_DATABASE_URL and run npm test.
 
-Cover registration/login, password hashing, rejecting STAFF registration, role checks, pet ownership, rejecting deletion of pets referenced by bookings, and active-booking species-change restrictions.
-
-Use Node's built-in test runner if it is sufficient. Test against a disposable shared test database (for example, set POSTGRES_DB=pawinn_test), never demo data that someone needs. Load referenced schemas/fixtures in account, room, booking order when needed for foreign keys. The service owner adds the test script and any setup instructions to package.json and the service README.
+The suite covers database readiness, bcrypt login, token expiry, customer-only registration, duplicate email, pet CRUD, role and ownership checks, invalid dates and booking history protection. Run the shared SQL verification separately from database/tests/verify.sql.

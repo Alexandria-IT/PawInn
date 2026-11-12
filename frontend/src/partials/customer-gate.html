@@ -1,11 +1,11 @@
 <div
   class="empty my-8"
-  x-show="!$store.portal.user || $store.portal.user.role!=='CUSTOMER'"
+  x-show="$store.portal.ready && (!$store.portal.user || $store.portal.user.role!=='CUSTOMER')"
   x-cloak
 >
   <span class="eyebrow">YOUR LITTLE CORNER OF PAWINN</span>
   <h3
-    x-text="$store.portal.user?'You’re using the staff demo':'Make yourself at home'"
+    x-text="$store.portal.user?'You’re signed in as staff':'Make yourself at home'"
   ></h3>
   <p>
     Sign in as a customer to manage pet profiles, plan a stay and see your

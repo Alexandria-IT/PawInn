@@ -28,7 +28,7 @@
         <span class="eyebrow">LET’S GET TO KNOW EACH OTHER</span>
         <h1>Join the family.</h1>
         <p class="muted text-sm mb-6">
-          Create a demo account to start planning.
+          Create a PawInn account to manage your pet profiles.
         </p>
         <form @submit.prevent="submit()" class="space-y-4">
           <label
@@ -48,12 +48,19 @@
               required
               maxlength="254"
           /></label>
+          <label
+            >Phone (optional)<input
+              type="tel"
+              x-model="phone"
+              autocomplete="tel"
+              maxlength="30"
+          /></label>
           <div class="grid sm:grid-cols-2 gap-3">
             <label
-              >Demo password<input
+              >Password<input
                 type="password"
                 x-model="password"
-                autocomplete="off"
+                autocomplete="new-password"
                 placeholder="8+ characters"
                 minlength="8"
                 required /></label
@@ -61,27 +68,12 @@
               >Confirm password<input
                 type="password"
                 x-model="confirm"
-                autocomplete="off"
+                autocomplete="new-password"
                 placeholder="One more time"
                 minlength="8"
                 required
             /></label>
           </div>
-          <p class="text-[11px] muted">
-            Use invented details and a made-up password. Passwords are not saved
-            or verified in this frontend demo.
-          </p>
-          <label class="flex items-start gap-3 font-normal"
-            ><input
-              type="checkbox"
-              x-model="accepted"
-              required
-              class="mt-0.5 shrink-0"
-            /><span class="text-xs muted"
-              >I understand this is a local demo account, not a secure or real
-              hotel account.</span
-            ></label
-          >
           <p
             x-show="error"
             x-cloak
@@ -92,7 +84,7 @@
           <button
             class="btn btn-primary w-full"
             :disabled="busy"
-            x-text="busy?'Creating your space…':'Create demo account →'"
+            x-text="busy?'Creating your space…':'Create account →'"
           ></button>
         </form>
         <p class="text-xs muted mt-5 text-center">

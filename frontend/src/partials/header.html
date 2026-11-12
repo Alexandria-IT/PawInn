@@ -1,11 +1,4 @@
 <a class="skip-link" href="#main">Skip to content</a>
-<div class="demo-bar">
-  A little preview of PawInn · Browser-only demo · No real reservations or
-  payments
-  <span class="hidden sm:inline"
-    >— <a href="/pages/login.html">Try a demo account</a></span
-  >
-</div>
 <header class="site-header">
   <div class="wrap header-row">
     <a href="/" class="brand" aria-label="PawInn home"
@@ -44,7 +37,12 @@
           /></svg></span
       >PawInn<span class="text-clay">.</span></a
     >
-    <nav class="desktop-nav" aria-label="Main navigation">
+    <nav
+      class="desktop-nav"
+      aria-label="Main navigation"
+      x-show="showSiteNavigation"
+      x-cloak
+    >
       <a
         href="/"
         class="nav-link"
@@ -74,14 +72,22 @@
         >My bookings</a
       >
     </nav>
-    <div class="desktop-actions flex items-center gap-3">
+    <div
+      class="desktop-actions flex items-center gap-3"
+      :class="{ 'staff-actions': !showSiteNavigation }"
+    >
       <a
         href="/pages/login.html"
         class="text-sm font-medium"
-        x-show="!$store.portal.user"
+        x-show="$store.portal.ready && !$store.portal.user"
+        x-cloak
         >Sign in</a
       >
-      <a href="/pages/rooms.html" class="btn btn-dark"
+      <a
+        href="/pages/rooms.html"
+        class="btn btn-dark"
+        x-show="showSiteNavigation"
+        x-cloak
         >Book a stay <span aria-hidden="true">↗</span></a
       >
       <div
@@ -112,7 +118,7 @@
             ></p>
             <p
               class="text-xs muted"
-              x-text="$store.portal.user?.role==='STAFF'?'Staff demo account':'Customer demo account'"
+              x-text="$store.portal.user?.role==='STAFF'?'Staff account':'Customer account'"
             ></p>
           </div>
           <a
@@ -131,6 +137,8 @@
     </div>
     <button
       class="icon-btn md:hidden"
+      x-show="showSiteNavigation"
+      x-cloak
       @click="mobileOpen=!mobileOpen"
       :aria-expanded="mobileOpen"
       aria-controls="mobile-nav"
@@ -153,14 +161,17 @@
     id="mobile-nav"
     class="mobile-nav"
     aria-label="Mobile navigation"
-    x-show="mobileOpen"
+    x-show="showSiteNavigation && mobileOpen"
     x-cloak
     @keydown.escape.window="mobileOpen=false"
   >
     <a href="/">Home</a><a href="/pages/rooms.html">Our rooms</a
     ><a href="/pages/pets.html">My pets</a
     ><a href="/pages/bookings.html">My bookings</a>
-    <a href="/pages/login.html" x-show="!$store.portal.user">Sign in</a
+    <a
+      href="/pages/login.html"
+      x-show="$store.portal.ready && !$store.portal.user"
+      >Sign in</a
     ><a
       href="/pages/staff-dashboard.html"
       x-show="$store.portal.user?.role==='STAFF'"

@@ -1,0 +1,14 @@
+name: PawInn verification
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and verify disposable stack
+        run: sh scripts/verify.sh

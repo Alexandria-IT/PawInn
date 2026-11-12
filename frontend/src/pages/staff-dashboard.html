@@ -8,9 +8,18 @@
     <link rel="stylesheet" href="/assets/styles.css" />
     <script defer src="/assets/app.js"></script>
   </head>
-  <body x-data="shell" data-page="staff">
+  <body x-data="shell" data-page="staff-dashboard">
     <!-- include:header -->
     <main id="main" class="wrap" x-data="staff">
+      <p class="notice" x-show="!$store.portal.ready" x-cloak>
+        Loading your account and reservations…
+      </p>
+      <div class="notice my-4" x-show="$store.portal.error" x-cloak>
+        <p x-text="$store.portal.error" role="alert"></p>
+        <button class="text-link" @click="$store.portal.refresh()">
+          Try again
+        </button>
+      </div>
       <div class="page-intro flex flex-wrap items-center justify-between gap-4">
         <div>
           <p class="eyebrow">THE LITTLE THINGS BEHIND EVERY HAPPY STAY</p>
@@ -19,13 +28,17 @@
             A thoughtful overview of the guests in your care.
           </p>
         </div>
-        <span class="badge bg-[#e8e4ef] text-[#71607c]">STAFF DEMO PORTAL</span>
+        <span class="badge bg-[#e8e4ef] text-[#71607c]">STAFF PORTAL</span>
       </div>
-      <div class="empty" x-show="$store.portal.user?.role!=='STAFF'" x-cloak>
+      <div
+        class="empty"
+        x-show="$store.portal.ready && $store.portal.user?.role!=='STAFF'"
+        x-cloak
+      >
         <h3>A little space for our team.</h3>
         <p>
-          Use the staff demo account to review cancellation requests and manage
-          stay status.
+          Use the staff account to review cancellation requests and manage stay
+          status.
         </p>
         <a
           href="/pages/login.html?next=%2Fpages%2Fstaff-dashboard.html"
@@ -38,7 +51,7 @@
           <article class="card stat-card">
             <p class="eyebrow">IN-HOUSE GUESTS</p>
             <strong x-text="occupied"></strong>
-            <p class="text-xs muted mt-2">of 6 sample rooms occupied</p>
+            <p class="text-xs muted mt-2">pets currently staying</p>
           </article>
           <article class="card stat-card">
             <p class="eyebrow">TODAY’S ARRIVALS</p>
@@ -53,7 +66,7 @@
           <article class="card stat-card">
             <p class="eyebrow">CONFIRMED STAYS</p>
             <strong
-              x-text="all.filter(b=>b.status==='CONFIRMED').length"
+              x-text="all.filter(/* Keep confirmed stays that have yet to check out. */ b=>b.status==='CONFIRMED' && b.end>today()).length"
             ></strong>
             <p class="text-xs muted mt-2">upcoming and current guests</p>
           </article>
@@ -94,7 +107,7 @@
             <table>
               <caption
                 class="sr-only"
-                x-text="tab==='requests'?'Pending cancellation requests':'All demo bookings'"
+                x-text="tab==='requests'?'Pending cancellation requests':'All bookings'"
               ></caption>
               <thead>
                 <tr>
@@ -113,10 +126,10 @@
                       <p class="font-semibold" x-text="booking.petName"></p>
                       <p
                         class="text-[10px] muted mt-1"
-                        x-text="booking.id+' · '+typeFor(booking.typeId).name"
+                        x-text="booking.id+' · '+booking.roomName"
                       ></p>
                     </td>
-                    <td x-text="customer(booking.userId)"></td>
+                    <td x-text="booking.customerName"></td>
                     <td>
                       <p x-text="dateLabel(booking.start)"></p>
                       <p
@@ -140,18 +153,18 @@
                       <button
                         x-show="booking.cancellation?.status==='PENDING'"
                         class="btn btn-soft btn-sm"
-                        @click="openReview(booking,true)"
+                        @click="openReview(booking)"
                       >
                         Review request ↗</button
                       ><button
-                        x-show="booking.status==='CONFIRMED' && booking.end<=today()"
+                        x-show="canComplete(booking)"
                         class="btn btn-outline btn-sm"
                         @click="finish(booking)"
                       >
                         Complete stay</button
                       ><span
                         class="muted text-xs"
-                        x-show="booking.cancellation?.status!=='PENDING' && !(booking.status==='CONFIRMED' && booking.end<=today())"
+                        x-show="booking.cancellation?.status!=='PENDING' && !canComplete(booking)"
                         >All settled for now</span
                       >
                     </td>
@@ -167,17 +180,49 @@
             x-text="query?'No matching stays.':'A little breathing room.'"
           ></h3>
           <p
-            x-text="query?'Try another customer name, pet name or booking reference.':'No cancellation requests are waiting. Try the customer demo to submit a request, then return here to review it.'"
+            x-text="query?'Try another customer name, pet name or booking reference.':'No cancellation requests are waiting.'"
           ></p>
-          <a href="/pages/login.html" class="text-link" x-show="!query"
-            >Explore the customer demo →</a
+          <a href="/pages/rooms.html" class="text-link" x-show="!query"
+            >Browse rooms →</a
           >
         </div>
         <p class="notice mt-7">
-          Demo policy: approved cancellations receive a full simulated refund.
-          Declined requests keep their booking confirmed. Access controls here
-          are visual only; real permissions will be enforced by the backend.
+          Cancellation policy: approved cancellations receive a full simulated
+          refund. Declined requests keep their booking confirmed.
         </p>
+        <section class="mt-10">
+          <div class="flex items-center justify-between gap-4">
+            <h2 class="text-2xl">Room inventory</h2>
+            <button
+              class="btn btn-outline"
+              @click="loadRooms()"
+              :disabled="inventoryLoading"
+              x-text="inventoryLoading?'Loading…':'Load inventory'"
+            ></button>
+          </div>
+          <p
+            class="error my-3"
+            x-show="inventoryError"
+            x-text="inventoryError"
+            role="alert"
+          ></p>
+          <ul class="mt-4 space-y-2">
+            <template x-for="room in rooms" :key="room.id">
+              <li class="card p-3 flex items-center justify-between gap-3">
+                <span
+                  x-text="room.roomNumber+' · '+typeName(room.roomTypeId)"
+                ></span>
+                <button
+                  class="btn btn-outline btn-sm"
+                  @click="toggleRoom(room)"
+                  :disabled="busy"
+                  :aria-label="(room.isActive?'Deactivate ':'Activate ')+room.roomNumber"
+                  x-text="room.isActive?'Deactivate':'Activate'"
+                ></button>
+              </li>
+            </template>
+          </ul>
+        </section>
       </section>
       <div
         class="modal-overlay"
@@ -212,11 +257,11 @@
                 <span class="muted">Guest / customer</span
                 ><span
                   ><strong x-text="target.petName"></strong> /
-                  <span x-text="customer(target.userId)"></span
+                  <span x-text="target.customerName"></span
                 ></span>
               </div>
               <div class="summary-line">
-                <span class="muted">Demo payment</span
+                <span class="muted">Simulated payment</span
                 ><strong x-text="money(target.total)"></strong>
               </div>
               <div class="notice my-4">
@@ -229,7 +274,9 @@
                     Your decision
                   </legend>
                   <div class="flex gap-5">
-                    <label class="flex items-center gap-2"
+                    <label
+                      class="flex items-center gap-2"
+                      x-show="target.start>today()"
                       ><input
                         type="radio"
                         name="decision"
@@ -258,7 +305,7 @@
                 <p class="error" x-show="error" x-text="error" role="alert"></p>
                 <p
                   class="text-xs muted"
-                  x-text="approved?'This releases the room and issues a full demo refund.':'The stay remains confirmed and no refund is issued.'"
+                  x-text="approved?'This releases the room and issues a full simulated refund.':'The stay remains confirmed and no refund is issued.'"
                 ></p>
                 <button
                   class="btn btn-primary w-full"

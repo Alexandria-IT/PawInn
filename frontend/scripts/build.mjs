@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile, cp, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -14,6 +15,11 @@ await build({
   target: ["es2022"],
   format: "iife",
 });
+// Version the script URL so updated pages don't load a cached older bundle.
+const appVersion = createHash("sha256")
+  .update(await readFile(path.join(root, "dist/assets/app.js")))
+  .digest("hex")
+  .slice(0, 16);
 const css = spawnSync(
   process.execPath,
   [
@@ -27,6 +33,7 @@ const css = spawnSync(
   { stdio: "inherit", cwd: root },
 );
 if (css.status !== 0) process.exit(css.status || 1);
+// Expand shared HTML once at build time so each page can load directly.
 const partials = {};
 for (const filename of await readdir(path.join(root, "src/partials")))
   partials[filename.replace(".html", "")] = await readFile(
@@ -38,12 +45,21 @@ for (const dir of ["", "pages"]) {
   for (const filename of await readdir(path.join(root, "src", dir)))
     if (filename.endsWith(".html")) {
       let html = await readFile(path.join(root, "src", dir, filename), "utf8");
-      html = html.replace(/<!-- include:([\w-]+) -->/g, (_, name) => {
-        if (!partials[name]) throw new Error(`Missing partial: ${name}`);
-        return partials[name];
-      });
+      html = html.replace(
+        /<!-- include:([\w-]+) -->/g,
+        /* Resolve the include to its shared HTML partial. */ (_, name) => {
+          if (!partials[name]) throw new Error(`Missing partial: ${name}`);
+          return partials[name];
+        },
+      );
       if (html.includes("<!-- include:"))
         throw new Error("Unresolved HTML include.");
+      // A fresh URL bypasses copies of Home cached by older deployments.
+      html = html.replaceAll('href="/"', `href="/?v=${appVersion}"`);
+      html = html.replace(
+        'src="/assets/app.js"',
+        'src="/assets/app.js?v=' + appVersion + '"',
+      );
       await writeFile(path.join(root, "dist", dir, filename), html);
     }
 }

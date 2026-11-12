@@ -1,5 +1,73 @@
-// TODO(Member 2): PostgreSQL pool and parameterized SQL for users and pets.
-// All services use POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER,
-// POSTGRES_PASSWORD and POSTGRES_DB (default pawinn).
-// Primarily write your own tables; shared reads/JOINs are allowed.
-// SQL: ../../database/account/. Setup: ../../database/README.md.
+import pg from "pg";
+
+// Connect Account to the configured PostgreSQL database.
+export function createPool(env = process.env) {
+  if (!env.POSTGRES_PASSWORD)
+    throw new Error("Set POSTGRES_PASSWORD in the root .env.");
+  return new pg.Pool({
+    host: env.POSTGRES_HOST || "127.0.0.1",
+    port: Number(env.POSTGRES_PORT || 5432),
+    user: env.POSTGRES_USER || "pawinn",
+    password: env.POSTGRES_PASSWORD,
+    database: env.POSTGRES_DB || "pawinn",
+    max: 10,
+    connectionTimeoutMillis: 3000,
+    statement_timeout: 5000,
+  });
+}
+
+// Update an owned pet while checking active reservations.
+export async function updatePet(pool, id, owner, changes) {
+  const db = await pool.connect();
+  let committed = false;
+  try {
+    await db.query("BEGIN");
+    // Booking locks the same pet row before reading its species and reserving a room.
+    const {
+      rows: [current],
+    } = await db.query(
+      "SELECT " +
+        petFields +
+        " FROM pets WHERE pet_id=$1 AND owner_id=$2 FOR UPDATE",
+      [id, owner],
+    );
+    if (!current) return { status: 404 };
+    if (changes.species && changes.species !== current.species) {
+      const {
+        rows: [{ active }],
+      } = await db.query(
+        "SELECT EXISTS (SELECT 1 FROM bookings WHERE pet_id=$1 AND status IN ('PENDING', 'CONFIRMED')) AS active",
+        [id],
+      );
+      if (active) return { status: 409 };
+    }
+    const {
+      rows: [pet],
+    } = await db.query(
+      `UPDATE pets SET name=$3, species=$4, breed=$5, birth_date=$6, care_notes=$7
+       WHERE pet_id=$1 AND owner_id=$2 RETURNING ${petFields}`,
+      [
+        id,
+        owner,
+        changes.name ?? current.name,
+        changes.species ?? current.species,
+        "breed" in changes ? changes.breed : current.breed,
+        "birthDate" in changes ? changes.birthDate : current.birth_date,
+        "notes" in changes ? changes.notes : current.care_notes,
+      ],
+    );
+    await db.query("COMMIT");
+    committed = true;
+    return { pet };
+  } finally {
+    try {
+      if (!committed) await db.query("ROLLBACK");
+    } finally {
+      db.release();
+    }
+  }
+}
+
+export const petFields =
+  "pet_id, owner_id, name, species, breed, to_char(birth_date, 'YYYY-MM-DD') AS birth_date, care_notes";
+export const userFields = "user_id, full_name, email, phone, role";

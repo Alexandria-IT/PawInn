@@ -40,15 +40,14 @@
               required
               maxlength="254" /></label
           ><label
-            >Demo password
+            >Password
             <div class="relative mt-2">
               <input
                 :type="showPassword?'text':'password'"
                 x-model="password"
-                minlength="8"
                 required
-                autocomplete="off"
-                placeholder="Any made-up password (8+ characters)"
+                autocomplete="current-password"
+                placeholder="Your password"
                 class="pr-16"
               /><button
                 type="button"
@@ -58,10 +57,6 @@
                 x-text="showPassword?'Hide':'Show'"
               ></button></div
           ></label>
-          <p class="text-[11px] muted">
-            Demo only: passwords are neither checked nor stored. Don’t use real
-            credentials.
-          </p>
           <p
             x-show="error"
             x-cloak
@@ -79,29 +74,6 @@
           New around here?
           <a href="/pages/register.html" class="text-link">Create an account</a>
         </p>
-        <div class="border-t border-stone-200 pt-6 mt-7">
-          <p class="eyebrow mb-3">JUST EXPLORING? MAKE YOURSELF AT HOME.</p>
-          <div class="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              class="btn btn-outline text-xs"
-              :disabled="busy"
-              @click="signIn('jamie@pawinn.demo')"
-            >
-              Customer demo ↗</button
-            ><button
-              type="button"
-              class="btn btn-outline text-xs"
-              :disabled="busy"
-              @click="signIn('team@pawinn.demo')"
-            >
-              Staff demo ↗
-            </button>
-          </div>
-          <p class="text-[10px] muted mt-3">
-            Sample accounts and data live only in this browser.
-          </p>
-        </div>
       </section>
     </main>
     <!-- include:footer -->

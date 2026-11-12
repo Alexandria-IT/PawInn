@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "dev": "node scripts/dev.mjs",
-    "start": "node scripts/serve.mjs",
+    "dev": "node --env-file-if-exists=../.env scripts/dev.mjs",
+    "start": "node --env-file-if-exists=../.env scripts/serve.mjs",
     "test": "node --test tests/*.test.js",
     "format": "prettier --write \"src/**/*.{html,css,js}\" \"scripts/*.mjs\" \"tests/*.js\" package.json"
   },

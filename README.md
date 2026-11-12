@@ -1,112 +1,84 @@
 # PawInn
 
-PawInn is a customer-facing pet hotel portal web app.
+PawInn is a pet hotel booking portal. The HTML/Tailwind/Alpine frontend talks to Account, Room and Booking Express services, backed by one shared PostgreSQL database. Customers manage pets, find available rooms, reserve stays and request cancellation. Staff manage inventory and review requests. Checkout and refunds are simulated and collect no payment details.
 
-## Project status
+## Run from scratch
 
-The eight-page frontend is implemented with HTML, Tailwind CSS and Alpine.js. It runs independently using sample browser-local data. Compose can start one PostgreSQL instance containing one shared application database, `pawinn`. The seven-table schema and mock-data SQL are implemented. Backend services and deployment pipelines remain TODO scaffolds. The full application is not integrated yet.
+Install Git and Docker with the `docker compose` command. Start Docker Desktop on Windows or macOS, or start Docker Engine on Linux. Docker builds the app and runs PostgreSQL, so you can use the same setup on each platform.
 
-## Team of four: start here
+### 1. Clone the repository
 
-Read [the team work plan](docs/team.md) for assignments, implementation order and the pull request workflow. Use [the API agreement](docs/api.md) before connecting services.
-
-| Person | Main work |
-| --- | --- |
-| You / Member 1 | Frontend integration, customer/staff journeys, README and demo |
-| Member 2 | Account service: login, users and pets |
-| Member 3 | Room service, Docker Compose, GitHub Actions and Jenkins |
-| Member 4 | Booking service: availability, reservations, mock payment and cancellations |
-
-Replace these labels with your names. Everyone writes tests for their own work and helps with final integration.
-
-## Simple folder structure
-
-```text
-PawInn/
-├── frontend/                # Existing HTML, Tailwind and Alpine website
-├── services/
-│   ├── account/             # Member 2
-│   ├── room/                # Member 3
-│   └── booking/             # Member 4
-├── database/                # Shared pawinn database; SQL grouped by table owner
-├── infra/                   # Planned Nginx API proxy
-├── .github/workflows/       # Member 3 adds one CI workflow here
-├── docs/                    # Team plan, API agreement, architecture and diagrams
-├── tests/                   # Whole-project integration checklist
-├── compose.yaml             # Runnable shared PostgreSQL; API containers come later
-├── Jenkinsfile              # TODO: local deployment pipeline
-└── .env.example             # Safe sample configuration
+```sh
+git clone https://github.com/Alexandria-IT/PawInn.git
+cd PawInn
 ```
 
-Each backend service starts flat: `server.js`, `routes.js`, `db.js`, `package.json`, `Dockerfile` and `tests/`. Its SQL lives in `database/<service>/schema.sql` and `seed.sql`. Each has a README explaining its tasks. Add files only when working code needs them; generate lockfiles with npm when dependencies are installed.
+### 2. Configure your local environment
 
-## Start the shared PostgreSQL instance
+Create `.env` from the template. On Windows PowerShell, run `Copy-Item .env.example .env`. On macOS or Linux, run `cp .env.example .env`.
 
-From the root in PowerShell, copy the template only if you do not already have `.env`, set your local password, then start PostgreSQL:
+- Set `POSTGRES_PASSWORD` to a password for your local database.
+- Set `JWT_SECRET` to a unique signing secret of at least 32 bytes. Run the command below and paste its output as the value.
 
-```powershell
-Copy-Item .env.example .env
-docker compose up -d --wait postgres
+```sh
+docker run --rm node:24-alpine node -p "require('node:crypto').randomBytes(32).toString('hex')"
+```
+
+Keep `PAWINN_SEED_DEMO=false` for regular use and keep `.env` out of Git.
+
+### 3. Start PawInn
+
+```sh
+docker compose up -d --build --wait
 docker compose ps
 ```
 
-All three Express services connect to the same `pawinn` database using `POSTGRES_DB` from `.env`. Its seven tables have normal foreign keys and SQL joins. A fresh database automatically loads the schema and mock data for all services (3 users, 4 pets, 15 rooms and 6 bookings). Existing placeholder databases need the explicit init command in the database guide. Each teammate runs this setup locally. See [database setup and connections](database/README.md) for ports, credentials, SQL ownership and applying later changes.
+Open [PawInn](http://localhost:8080) when the containers are healthy. The first startup creates the database tables and adds 15 rooms. To try the customer flow, choose **Sign in**, create an account, add a pet under **My Pets**, then choose a room and dates under **Our Rooms**.
 
-Mock data for all services can be loaded through `database/seed.psql`; see the [step-by-step setup, demo accounts and verification commands](database/README.md).
+### 4. Create a staff account
 
-## Product direction
+Use an email that is new to PawInn and a password of at least 12 characters. Replace `staff@example.com` in the command you use.
 
-Help pet owners explore hotel services, plan their pets' stays, and manage bookings through a customer portal.
+Windows PowerShell 7
 
-## Run the frontend
-
-Use Node.js 24 LTS and npm:
-
-```sh
-cd frontend
-npm ci
-npm run dev
+```powershell
+$staffPassword = Read-Host "New staff password" -MaskInput
+$staffPassword | docker compose exec -T account node staff.js staff@example.com "PawInn Staff"
+Remove-Variable staffPassword
 ```
 
-Open http://127.0.0.1:4173. The dev command builds once and starts the preview server; after source edits, run `npm run build` and refresh the browser. `npm start` serves an existing build. The built site is in `frontend/dist/` and must be served from a web root, not opened as a local HTML file.
+macOS or Linux in Bash
 
-```sh
-npm run build
-npm test
+```bash
+read -r -s -p 'New staff password: ' staff_password
+printf '\n'
+printf '%s\n' "$staff_password" | docker compose exec -T account node staff.js staff@example.com "PawInn Staff"
+unset staff_password
 ```
 
-The tests cover booking overlap, room capacity, pet ownership, checkout retries/idempotency, cancellation review and built navigation/assets. Build before running tests.
+Sign in with the new staff account to open the dashboard.
 
-## Pages
+### Stop, restart, and troubleshoot
 
-| Page | Path |
+- Run `docker compose stop` to stop PawInn and `docker compose up -d --wait` to start it again. PostgreSQL keeps accounts and bookings in its named volume.
+- If a container fails to start, check `docker compose ps -a` and `docker compose logs --tail=100`.
+- If port `8080` is occupied, set `FRONTEND_PORT` to a free port in `.env` and open PawInn on that port. If `5432` is occupied, change `POSTGRES_PORT`. Run the startup command again after editing `.env`.
+
+## Verify the release
+
+From Linux or a Docker-capable course shell, run `sh scripts/verify.sh`. It creates a disposable stack, runs SQL and HTTP checks, and removes only its own test containers and volume. See the [verification walkthrough](docs/local-demo.md) and [deployment notes](docs/architecture.md#delivery) for Jenkins setup and the course container.
+
+The GitHub Actions workflow runs the same verification on pushes and PRs. Jenkins builds and verifies the commit, then deploys the tested images on main using the deployment .env credential. Do not treat local checks as formal course-container results.
+
+## Project map
+
+| Folder | Purpose |
 | --- | --- |
-| Home | `/` |
-| Sign in | `/pages/login.html` |
-| Register | `/pages/register.html` |
-| Pet profiles | `/pages/pets.html` |
-| Rooms and availability | `/pages/rooms.html` |
-| Bookings, history and cancellation requests | `/pages/bookings.html` |
-| Mock payment checkout | `/pages/checkout.html?booking=PW-…` |
-| Staff dashboard and cancellation review | `/pages/staff-dashboard.html` |
+| frontend | Customer/staff pages and Nginx routes |
+| services/account | Registration, sign-in and pets |
+| services/room | Catalog and inventory |
+| services/booking | Reservations, simulated checkout, cancellations and audit history |
+| database | Schema, initial room inventory, and optional test fixtures |
+| scripts / tests | Disposable-stack verification |
 
-Use **Customer demo** or **Staff demo** on the sign-in page. Registration creates another local demo customer. No passwords are stored or verified, no payment details are collected, and no real reservations are made. Use invented details only. Data is stored under `pawinn.demo.v1` and the selected account under `pawinn.session.v1` in localStorage. Clear those keys to reset the demo. Data persists per browser and origin, not across devices.
-
-## Frontend container
-
-From the repository root:
-
-```sh
-docker build -t pawinn-frontend ./frontend
-docker run --rm -p 8080:80 pawinn-frontend
-```
-
-Open http://localhost:8080. The image builds the static assets and serves them with Nginx.
-
-## Architecture
-
-The backend plan has three separately running services (account, room and booking) sharing one PostgreSQL container and one `pawinn` database. Each service primarily writes its own tables; shared reads/joins and real foreign keys keep this college project simple. Database changes must be coordinated because the services share its structure. The frontend's API adapter modules currently call the local demo model; replace them with service requests using `api/client.js`, and update the stores/page code that still reads demo data. The backend will enforce login, ownership, roles and booking rules; payment and refunds stay simulated for the course.
-
-Shared HTML fragments live in `frontend/src/partials/` and are expanded during the build. Alpine components live in `frontend/src/js/pages/`; global state lives in `stores/`. All illustrations are original local SVG assets. Tailwind and Alpine are bundled locally, so the built frontend needs no CDN.
-
-See [the architecture notes](docs/architecture.md), [local demo walkthrough](docs/local-demo.md) and [integration checklist](tests/README.md).
+See the [API agreement](docs/api.md), [database setup](database/README.md), and [team assignments](docs/team.md).

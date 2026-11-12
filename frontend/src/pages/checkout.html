@@ -11,6 +11,15 @@
   <body x-data="shell" data-page="checkout">
     <!-- include:header -->
     <main id="main" class="wrap" x-data="checkout">
+      <p class="notice" x-show="!$store.portal.ready" x-cloak>
+        Loading your account and reservations…
+      </p>
+      <div class="notice my-4" x-show="$store.portal.error" x-cloak>
+        <p x-text="$store.portal.error" role="alert"></p>
+        <button class="text-link" @click="$store.portal.refresh()">
+          Try again
+        </button>
+      </div>
       <div class="page-intro">
         <a href="/pages/bookings.html" class="text-link mb-5"
           >← Back to my bookings</a
@@ -18,7 +27,7 @@
         <p class="eyebrow">ALMOST READY FOR THEIR LITTLE GETAWAY</p>
         <h1>One last little step.</h1>
         <p class="muted text-sm">
-          Make their stay official with a quick demo checkout.
+          Make their stay official with a quick simulated checkout.
         </p>
       </div>
       <!-- include:customer-gate -->
@@ -26,7 +35,7 @@
         <div class="empty" x-show="!booking">
           <h3>Let’s find their stay first.</h3>
           <p>
-            This booking is unavailable, or it belongs to another demo account.
+            This booking is unavailable, or it belongs to another account.
             Choose a room to start a new reservation.
           </p>
           <a href="/pages/rooms.html" class="btn btn-primary">Find a room →</a>
@@ -58,7 +67,7 @@
                 </div>
                 <div class="summary-line">
                   <span class="muted">Room</span
-                  ><span x-text="typeFor(booking.typeId).name"></span>
+                  ><span x-text="booking.roomName"></span>
                 </div>
                 <div class="summary-line">
                   <span class="muted">Check-in</span
@@ -69,7 +78,7 @@
                   ><span x-text="dateLabel(booking.end)"></span>
                 </div>
                 <div class="summary-line border-t border-stone-200">
-                  <span>Demo payment</span
+                  <span>Simulated payment</span
                   ><strong x-text="money(booking.total)"></strong>
                 </div>
               </div>
@@ -82,7 +91,7 @@
               class="empty"
             >
               <h3
-                x-text="booking.status==='EXPIRED'?'That little hold has expired.':'This stay is no longer awaiting payment.'"
+                x-text="booking.logs.some(/* Find the hold expiry entry. */ log=>log.action==='HOLD_EXPIRED')?'That little hold has expired.':'This stay is no longer awaiting payment.'"
               ></h3>
               <p>
                 Checkout is available only for pending reservations. Find a
@@ -100,7 +109,7 @@
                 <div
                   class="flex flex-wrap justify-between items-center gap-3 mb-6"
                 >
-                  <h2 class="text-3xl">A simple, pretend payment.</h2>
+                  <h2 class="text-3xl">Simulated payment</h2>
                   <span class="badge badge-pending"
                     >Held for <span x-text="countdown"></span
                   ></span>
@@ -109,7 +118,9 @@
                   class="rounded-2xl bg-[#e8e4ef] p-6 flex items-center justify-between gap-4"
                 >
                   <div>
-                    <p class="eyebrow text-[#71607c]">PAWINN DEMO CHECKOUT</p>
+                    <p class="eyebrow text-[#71607c]">
+                      PAWINN SIMULATED CHECKOUT
+                    </p>
                     <p class="font-semibold mt-3">
                       All the experience. None of the charge.
                     </p>
@@ -167,8 +178,8 @@
                       x-model="accepted"
                       class="shrink-0 mt-1"
                     /><span class="text-xs muted"
-                      >I understand this checkout is simulated. No money moves
-                      and no real hotel reservation is created.</span
+                      >I understand this checkout is simulated. Your reservation
+                      is saved without a charge.</span
                     ></label
                   >
                   <p
@@ -183,22 +194,19 @@
                     x-text="busy?'Making it official…':'Simulate payment · '+money(booking.total)+' →'"
                   ></button>
                   <p class="text-[10px] muted text-center">
-                    Sample prices in Thai baht. No additional demo fees.
+                    Prices in Thai baht. No money is collected.
                   </p>
                 </form>
               </section>
               <aside class="card">
                 <img
-                  :src="'/assets/images/'+typeFor(booking.typeId).image"
-                  :alt="'Illustration of '+typeFor(booking.typeId).name"
+                  :src="'/assets/images/'+roomImage(booking)"
+                  :alt="'Illustration of '+booking.roomName"
                   class="w-full aspect-[1.9] object-cover"
                 />
                 <div class="padded">
                   <p class="eyebrow mb-3">THEIR LITTLE GETAWAY</p>
-                  <h2
-                    class="text-3xl"
-                    x-text="typeFor(booking.typeId).name"
-                  ></h2>
+                  <h2 class="text-3xl" x-text="booking.roomName"></h2>
                   <p class="text-sm muted mt-2">
                     For <strong x-text="booking.petName"></strong> ·
                     <span x-text="booking.id"></span>
@@ -215,7 +223,7 @@
                     <div class="summary-line">
                       <span
                         class="muted"
-                        x-text="nights(booking.start,booking.end)+' nights × '+money(booking.rate)"
+                        x-text="nights(booking.start,booking.end)+' nights × '+money(booking.nightlyRate)"
                       ></span
                       ><span x-text="money(booking.total)"></span>
                     </div>

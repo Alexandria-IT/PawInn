@@ -1,6 +1,6 @@
 # PawInn API agreement
 
-This is the team's starting contract, not a list of implemented endpoints. Confirm it together before coding. If an endpoint changes, update this file and tell its consumers.
+Account, Room and Booking endpoints below are implemented. Update this file when an API changes.
 
 ## Shared conventions
 
@@ -8,13 +8,13 @@ This is the team's starting contract, not a list of implemented endpoints. Confi
 - Database IDs are generated INTEGER primary keys. Serialize them as opaque strings at the HTTP boundary; validate/convert incoming IDs before parameterized queries.
 - Dates: `YYYY-MM-DD`. Timestamps: ISO 8601. Check-out must be after check-in.
 - Currency: THB. Store database money as exact decimal values or integer satang; never trust a total sent by the browser.
-- Proposed authentication: `Authorization: Bearer <token>`. Account owns token issuance; each service validates it and enforces roles/ownership.
+- Authentication: `Authorization: Bearer <token>`. Account owns token issuance; each service validates it and enforces roles/ownership.
 - Success: `{"data": ...}`. Error: `{"message": "A useful explanation"}`.
 - Use 201 for creation; 200 for normal success; 204 for successful deletion; 400 invalid input; 401 unauthenticated; 403 forbidden; 404 missing; 409 conflicting state.
 - Each service exposes `GET /health`.
 - All three services connect to the shared `pawinn` database. The SQL already defines matching integer PK/FK types across all seven tables; API IDs remain strings at the HTTP boundary.
 - Services primarily write their own tables. Shared reads/joins are allowed for ownership, availability and prices; internal HTTP lookups are optional rather than required.
-- Keep these shapes independent of frontend demo storage; Member 1 adapts API responses to page state.
+- The frontend calls these APIs on the same origin through Nginx.
 
 ## Member 2: account
 
@@ -29,10 +29,12 @@ This is the team's starting contract, not a list of implemented endpoints. Confi
 | PATCH /api/pets/:id | Update an owned pet |
 | DELETE /api/pets/:id | Delete an owned pet only when no booking references it; preserve booking history |
 
+Account issues an HS256 JWT with a one-hour expiry, issuer `pawinn-account`, audience `pawinn` and the string user ID in `sub`. Use `Authorization: Bearer <token>` for protected routes. A successful login or registration returns `{data: {token, user}}`. Account checks the current database role rather than relying solely on the token claim. Foreign and missing pets return 404; a referenced pet deletion returns 409.
+
 Public user: `{id, name, email, phone, role}`; never return password hashes.
 Pet: `{id, ownerId, name, species, breed, birthDate, notes}`.
 Roles: CUSTOMER, STAFF. Species: Dog, Cat.
-Seed a staff account; registration must not accept a caller-selected STAFF role.
+Provision staff through the operator CLI; registration creates customers only.
 Account and booking owners coordinate pets/bookings foreign keys and active-booking checks before changing a booked pet's species. A normal FK prevents deleting a referenced pet; reject that deletion rather than cascading away booking history.
 
 ## Member 3: room
@@ -46,7 +48,7 @@ Account and booking owners coordinate pets/bookings foreign keys and active-book
 Room type: `{id, name, description, species, pricePerNight}`.
 Room: `{id, roomTypeId, roomNumber, isActive}`.
 Start with seed SQL for inventory; add more management endpoints only if the team needs them.
-Define what happens to existing reservations before allowing an occupied/reserved room to be deactivated. All three types share the agreed inventory target of five physical rooms each (15 total).
+Deactivation returns 409 when a room has a current or upcoming reservation. All three types share the agreed inventory target of five physical rooms each (15 total).
 
 ## Member 4: booking
 
@@ -62,7 +64,7 @@ Define what happens to existing reservations before allowing an occupied/reserve
 | PATCH /api/cancellations/:id | Staff submits decision APPROVED or DECLINED plus notes |
 | PATCH /api/bookings/:id/complete | Staff completes an eligible stay after check-out |
 
-Booking response: `{id, userId, petId, roomId, roomTypeId, start, end, nightlyRate, total, status, paymentStatus, refundStatus, createdAt}`; detail includes logs and cancellation information.
+Booking response: `{id, userId, petId, roomId, roomTypeId, start, end, nightlyRate, total, status, paymentStatus, refundStatus, createdAt}`; responses also include room number, room name, pet name, customer name, hold expiry in epoch milliseconds, logs and the latest cancellation.
 Booking statuses: PENDING, CONFIRMED, CANCELLED, COMPLETED.
 Payment statuses: UNPAID, SUCCESS, FAILED.
 Cancellation statuses: PENDING, APPROVED, DECLINED.
@@ -74,10 +76,10 @@ Pending reservations hold inventory for 15 minutes, then expire to CANCELLED if 
 
 The schema and demo data are implemented under `database/`; run the [database setup guide](../database/README.md). SQL uses snake_case; APIs keep the camelCase shapes above. Map `user_id` to user `id`, `full_name` to `name`, `care_notes` to `notes`, and booking `check_in_date`/`check_out_date`/`total_price` to `start`/`end`/`total`. Obtain a booking's `roomTypeId` by joining rooms. Never return password hashes.
 
-The sample accounts use public demo password `PawInnDemo123!`, stored as bcrypt hashes. The Account owner must implement password comparison. Booking hold expiry is derived from `created_at + 15 minutes`; cancel expired unpaid PENDING rows before they continue blocking availability. SQL does not run the expiry job automatically.
+The sample accounts use public demo password `PawInnDemo123!`, stored as bcrypt hashes. Account verifies the bcrypt password at sign-in. Booking hold expiry is derived from `created_at + 15 minutes`; cancel expired unpaid PENDING rows before they continue blocking availability. The Booking API expires holds as part of availability and booking requests.
 
 ## First integration example
 
 A customer signs in, loads their pets, browses room types, asks booking for availability, creates a reservation, completes mock checkout and reads booking history. Then the customer requests cancellation and staff reviews it.
 
-Decide exact optional detail fields and example responses together before wiring the frontend. Every owner should add one real request/response example here when their first endpoint works.
+Only an isolated test deployment enables fixture accounts. In normal operation, create accounts through signup or the local staff CLI.

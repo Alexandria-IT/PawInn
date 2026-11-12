@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <meta
       name="description"
-      content="Explore PawInn’s illustrated dog and cat rooms and check demo availability."
+      content="Explore PawInn’s illustrated dog and cat rooms and check availability."
     />
     <title>Find their happy place — PawInn</title>
     <link rel="icon" href="/assets/icons/paw.svg" />
@@ -23,7 +23,7 @@
           settle in?
         </p>
       </div>
-      <form @submit.prevent="search()" class="search-bar">
+      <form @submit.prevent="search()" class="search-bar" x-cloak>
         <label
           >Check-in<input
             type="date"
@@ -44,7 +44,11 @@
             <option>Dog</option>
             <option>Cat</option>
           </select></label
-        ><button class="btn btn-dark">Check availability →</button>
+        ><button
+          class="btn btn-dark"
+          :disabled="loading"
+          x-text="loading ? 'Checking…' : 'Check availability →'"
+        ></button>
       </form>
       <p
         class="error mt-4"
@@ -53,7 +57,7 @@
         x-text="error"
         role="alert"
       ></p>
-      <div class="notice mt-4" x-show="!checked && !error" x-cloak>
+      <div class="notice mt-4" x-show="!checked && !error && !loading" x-cloak>
         Dates changed. Check availability to refresh your results.
       </div>
       <section x-show="checked" x-cloak class="mt-9">
@@ -117,7 +121,7 @@
         <div>
           <p class="eyebrow mb-3">A LITTLE FLEXIBILITY</p>
           <p class="text-sm muted">
-            Request cancellation from your bookings. Our demo staff reviews each
+            Request cancellation from your bookings. Our staff reviews each
             request.
           </p>
         </div>
@@ -185,8 +189,8 @@
                     ></template></select
                 ></label>
                 <p class="text-xs muted">
-                  Your room will be held for 15 minutes while you complete demo
-                  checkout.
+                  Your room will be held for 15 minutes while you complete
+                  simulated checkout.
                 </p>
                 <p
                   class="error"

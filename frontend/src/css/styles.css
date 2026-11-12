@@ -278,18 +278,6 @@
   .text-link:hover {
     text-decoration-color: currentColor;
   }
-  .demo-bar {
-    background: #ede8dd;
-    padding: 7px 20px;
-    text-align: center;
-    font-size: 10px;
-    color: #706456;
-    letter-spacing: 0.02em;
-  }
-  .demo-bar a {
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
   .site-header {
     background: rgba(250, 248, 243, 0.96);
     border-bottom: 1px solid #e8e2d7;
@@ -719,7 +707,7 @@
     font-size: 28px;
   }
   .desktop-nav,
-  .desktop-actions {
+  .desktop-actions:not(.staff-actions) {
     display: none !important;
   }
   .mobile-nav {
