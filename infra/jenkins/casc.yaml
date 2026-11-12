@@ -1,6 +1,6 @@
 # Jenkins Configuration as Code for PawInn.
-# Applied every time Jenkins starts: creates the admin user and the "pawinn" job,
-# then queues one build so the site comes up at http://localhost:8080 automatically.
+# Applied every time Jenkins starts: creates the admin user and the "pawinn" job.
+# Press "Build Now" once; after that Jenkins polls GitHub every 2 minutes by itself.
 # Values can be changed in infra/jenkins/compose.yaml (environment).
 
 jenkins:
@@ -28,7 +28,7 @@ jobs:
           cpsScm {
             scm {
               git {
-                remote { url('${PAWINN_REPO_URL:-https://github.com/67070136/PawInn.git}') }
+                remote { url('${PAWINN_REPO_URL:-https://github.com/Alexandria-IT/PawInn.git}') }
                 branch('${PAWINN_BRANCH:-*/main}')
               }
             }
@@ -37,4 +37,3 @@ jobs:
           }
         }
       }
-      queue('pawinn')
