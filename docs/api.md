@@ -62,15 +62,19 @@ Deactivation returns 409 when a room has a current or upcoming reservation. All 
 | POST /api/bookings/:id/cancellations | Accept reason; create a customer request for an eligible booking |
 | GET /api/cancellations | Staff lists requests; support optional status filter |
 | PATCH /api/cancellations/:id | Staff submits decision APPROVED or DECLINED plus notes |
+| POST /api/bookings/:id/reschedules | Customer requests new start and end dates with a reason |
+| PATCH /api/bookings/:id/reschedules/:requestId | Staff approves or declines with a review note |
 | PATCH /api/bookings/:id/complete | Staff completes an eligible stay after check-out |
 
-Booking response: `{id, userId, petId, roomId, roomTypeId, start, end, nightlyRate, total, status, paymentStatus, refundStatus, createdAt}`; responses also include room number, room name, pet name, customer name, hold expiry in epoch milliseconds, logs and the latest cancellation.
+Booking response: `{id, userId, petId, roomId, roomTypeId, start, end, nightlyRate, total, status, paymentStatus, refundStatus, createdAt}`; responses also include room number, room name, pet name, customer name, hold expiry in epoch milliseconds, logs and the latest cancellation and reschedule. The reschedule includes its ID, status, original and requested dates, reason, and staff note.
 Booking statuses: PENDING, CONFIRMED, CANCELLED, COMPLETED.
 Payment statuses: UNPAID, SUCCESS, FAILED.
 Cancellation statuses: PENDING, APPROVED, DECLINED.
 Refund statuses: NOT_REQUESTED, PENDING, SUCCESS, FAILED.
 
 Pending reservations hold inventory for 15 minutes, then expire to CANCELLED if unpaid. Reject overlapping bookings for a room or pet. Failed payment can be retried before expiry. Repeated successful checkout/review must not charge/refund twice. Approved cancellation records a full mock refund for a paid booking and releases the room; declined requests keep it confirmed.
+
+Customers can request a date change for an upcoming confirmed stay. The new check-in must be after today and differ from the original check-in. The pet, room type, stay length, and payment are fixed. Each booking can have one pending change request, either cancellation or reschedule. A pending reschedule keeps the original dates reserved. Approval checks current availability and moves the booking to an available room of the same type, preferring its current room. A conflict leaves the original booking and pending request in place. A decline records the decision and keeps the original dates.
 
 ## Database mapping and fixtures
 

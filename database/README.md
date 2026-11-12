@@ -4,13 +4,15 @@ PawInn uses one PostgreSQL container with one database, `pawinn`. Account, Room 
 
 - Account: users and pets.
 - Room: room types and physical rooms.
-- Booking: reservations, cancellation requests and booking logs.
+- Booking: reservations, cancellation requests, reschedule requests and booking logs.
 
 From the repository root, set POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB and JWT_SECRET in .env, then run `docker compose up -d --build --wait`. On a fresh volume, init.sql creates the schema and inserts the initial 15 rooms. A normal deployment starts with no preloaded customer or staff accounts or bookings. Run `docker compose exec postgres psql -U pawinn -d pawinn` to inspect the schema, substituting your settings if different.
 
 The Node services use postgres:5432 inside Compose. Host development uses the local published port. The database password is separate from an application password.
 
 ## Existing databases
+
+Booking creates the reschedule request table on startup, including when an existing database volume is reused.
 
 PostgreSQL initialization runs only on a fresh data directory. The upgrade from the previous PawInn stack uses the same schema and preserves the existing volume and records. Do not delete the volume to apply this change. Fixture accounts and histories stay stored. Normal sign-in and staff booking views exclude them.
 

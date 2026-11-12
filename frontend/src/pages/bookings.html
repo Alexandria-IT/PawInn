@@ -37,7 +37,7 @@
         <div class="flex flex-wrap justify-between items-center gap-4 mb-7">
           <div class="tabs" aria-label="Filter bookings">
             <template
-              x-for="choice in [{id:'upcoming',name:'Upcoming'},{id:'history',name:'Past stays'},{id:'requests',name:'Cancellation requests'},{id:'all',name:'All stays'}]"
+              x-for="choice in [{id:'upcoming',name:'Upcoming'},{id:'history',name:'Past stays'},{id:'requests',name:'Change requests'},{id:'all',name:'All stays'}]"
               :key="choice.id"
               ><button
                 @click="tab=choice.id"
@@ -127,6 +127,11 @@
                   Cancellation requested. Your booking remains confirmed until
                   staff approves it.
                 </p>
+                <p
+                  x-show="booking.reschedule"
+                  class="text-xs muted mt-3"
+                  x-text="'Reschedule: '+booking.reschedule?.status"
+                ></p>
                 <p
                   x-show="booking.cancellation?.status==='DECLINED'"
                   class="text-xs muted mt-3"
@@ -229,6 +234,21 @@
                   x-text="'Simulated refund: '+money(detail.refundAmount||0)"
                 ></p>
               </div>
+              <div x-show="detail.reschedule" class="notice my-5">
+                <p class="font-semibold mb-1">
+                  Reschedule request ·
+                  <span x-text="detail.reschedule?.status"></span>
+                </p>
+                <p
+                  x-text="dateLabel(detail.reschedule?.start)+' to '+dateLabel(detail.reschedule?.end)"
+                ></p>
+                <p class="mt-2" x-text="detail.reschedule?.reason"></p>
+                <p
+                  class="mt-2"
+                  x-show="detail.reschedule?.note"
+                  x-text="detail.reschedule?.note"
+                ></p>
+              </div>
               <h3 class="text-sm mt-6 mb-4">Their stay, step by step</h3>
               <div class="timeline">
                 <template x-for="(log,index) in detail.logs" :key="index"
@@ -241,9 +261,16 @@
                 ></template>
               </div>
               <button
-                x-show="canCancel(detail)"
+                x-show="canRequestChange(detail)"
+                class="btn btn-outline btn-sm mt-4 mr-3"
+                @click="openRequest(detail,'reschedule')"
+              >
+                Request reschedule
+              </button>
+              <button
+                x-show="canRequestChange(detail)"
                 class="text-link mt-4"
-                @click="openCancel(detail)"
+                @click="openRequest(detail,'cancel')"
               >
                 Request cancellation →</button
               ><a
@@ -258,43 +285,68 @@
       </div>
       <div
         class="modal-overlay"
-        x-show="cancelTarget"
+        x-show="requestTarget"
         x-cloak
-        @click.self="cancelTarget=null"
-        @keydown.escape.window="cancelTarget=null"
-        x-trap.inert.noscroll="cancelTarget"
+        @click.self="requestTarget=null"
+        @keydown.escape.window="requestTarget=null"
+        x-trap.inert.noscroll="requestTarget"
       >
         <section
           class="modal-panel"
           role="dialog"
           aria-modal="true"
-          aria-labelledby="cancel-title"
+          aria-labelledby="request-title"
         >
           <div class="modal-title">
-            <h2 id="cancel-title">Plans can change.</h2>
+            <h2
+              id="request-title"
+              x-text="requestKind==='reschedule'?'Request reschedule':'Plans can change.'"
+            ></h2>
             <button
               class="icon-btn shrink-0"
-              @click="cancelTarget=null"
-              aria-label="Close cancellation request"
+              @click="requestTarget=null"
+              aria-label="Close change request"
             >
               ✕
             </button>
           </div>
-          <p class="muted text-sm mb-5">
+          <p class="muted text-sm mb-5" x-show="requestKind==='cancel'">
             Send a cancellation request for
-            <strong x-text="cancelTarget?.id"></strong>. Your stay remains
+            <strong x-text="requestTarget?.id"></strong>. Your stay remains
             confirmed while staff reviews it. Approved requests receive a full
             simulated refund.
           </p>
-          <form @submit.prevent="submitCancel()" class="space-y-4">
+          <p class="muted text-sm mb-5" x-show="requestKind==='reschedule'">
+            Choose an earlier or later check-in. The number of nights and price
+            stay the same. Your current dates stay booked until staff approves
+            the request.
+          </p>
+          <form @submit.prevent="submitRequest()" class="space-y-4">
+            <template x-if="requestKind==='reschedule'">
+              <div class="grid gap-3 sm:grid-cols-2">
+                <label
+                  >New check-in
+                  <input
+                    type="date"
+                    x-model="newStart"
+                    :min="addDays(today(),1)"
+                    required
+                  />
+                </label>
+                <label
+                  >New check-out
+                  <input type="date" :value="newEnd" readonly />
+                </label>
+              </div>
+            </template>
             <label
               >Tell us a little more<textarea
                 x-model="reason"
                 rows="4"
-                minlength="10"
+                :minlength="requestKind==='cancel'?10:1"
                 maxlength="1000"
                 required
-                placeholder="What changed? Please enter at least 10 characters."
+                :placeholder="requestKind==='cancel'?'What changed? Please enter at least 10 characters.':'Why do you need to change the dates?'"
               ></textarea>
             </label>
             <p class="error" x-show="error" x-text="error" role="alert"></p>
@@ -302,10 +354,12 @@
               <button
                 type="button"
                 class="btn btn-outline"
-                @click="cancelTarget=null"
+                @click="requestTarget=null"
               >
                 Keep my stay</button
-              ><button class="btn btn-primary">Send request →</button>
+              ><button class="btn btn-primary" :disabled="busy">
+                Send request →
+              </button>
             </div>
           </form>
         </section>

@@ -43,6 +43,7 @@ const selection = `
     b.refund_amount::float8 AS "refundAmount",
     extract(epoch FROM (b.created_at + interval '15 minutes'))::float8 * 1000 AS "expiresAt",
     c.item AS cancellation,
+    changes.item AS reschedule,
     (
       SELECT coalesce(
         json_agg(json_build_object('action', l.action, 'at', l.created_at, 'text', l.details) ORDER BY l.log_id),
@@ -64,7 +65,18 @@ const selection = `
     WHERE booking_id = b.booking_id
     ORDER BY cancellation_request_id DESC
     LIMIT 1
-  ) c ON true`;
+  ) c ON true
+  LEFT JOIN LATERAL (
+    SELECT json_build_object(
+      'id', reschedule_request_id::text, 'status', status, 'reason', reason, 'note', review_notes,
+      'originalStart', original_check_in::text, 'originalEnd', original_check_out::text,
+      'start', requested_check_in::text, 'end', requested_check_out::text
+    ) AS item
+    FROM reschedule_requests
+    WHERE booking_id = b.booking_id
+    ORDER BY reschedule_request_id DESC
+    LIMIT 1
+  ) changes ON true`;
 
 // Append an audit entry inside the caller's transaction.
 async function log(db, booking, user, action, details) {
@@ -98,7 +110,34 @@ async function get(db, booking, user) {
   return row;
 }
 
-// Register availability, booking, checkout, and cancellation routes.
+// Find a room under the inventory lock, optionally ignoring the stay being moved.
+async function availableRoom(
+  db,
+  roomTypeId,
+  start,
+  end,
+  bookingId = null,
+  preferredRoomId = null,
+) {
+  const {
+    rows: [room],
+  } = await db.query(
+    `SELECT r.room_id FROM rooms r
+     WHERE r.room_type_id=$1 AND r.is_active
+       AND NOT EXISTS (
+         SELECT 1 FROM bookings b
+         WHERE b.room_id=r.room_id AND b.status IN ('PENDING','CONFIRMED')
+           AND b.check_in_date<$3::date AND b.check_out_date>$2::date
+           AND ($4::int IS NULL OR b.booking_id<>$4)
+       )
+     ORDER BY (r.room_id=$5::int) DESC NULLS LAST, r.room_id
+     LIMIT 1 FOR UPDATE`,
+    [roomTypeId, start, end, bookingId, preferredRoomId],
+  );
+  return room;
+}
+
+// Register availability, booking, checkout, and request review routes.
 export function routes(router, pool, auth) {
   // Expire holds under the shared inventory lock.
   const expireHolds = () => transaction(pool, expire);
@@ -201,15 +240,7 @@ export function routes(router, pool, auth) {
           if (!roomType) fail(404, "Room type not found.");
           if (roomType.species !== pet.species)
             fail(400, "This room type is not suitable for that pet.");
-          // Checkout is exclusive, so an adjacent stay can use the same room.
-          const {
-            rows: [room],
-          } = await db.query(
-            `SELECT room_id FROM rooms r WHERE r.room_type_id=$1 AND r.is_active
-        AND NOT EXISTS(SELECT 1 FROM bookings b WHERE b.room_id=r.room_id AND b.status IN ('PENDING','CONFIRMED')
-          AND b.check_in_date<$3::date AND b.check_out_date>$2::date) ORDER BY room_id LIMIT 1 FOR UPDATE`,
-            [requestedRoomTypeId, start, end],
-          );
+          const room = await availableRoom(db, requestedRoomTypeId, start, end);
           if (!room)
             fail(
               409,
@@ -323,6 +354,8 @@ export function routes(router, pool, auth) {
             fail(409, "Only upcoming confirmed stays can be cancelled.");
           if (current.cancellation?.status === "PENDING")
             fail(409, "A cancellation request is already awaiting review.");
+          if (current.reschedule?.status === "PENDING")
+            fail(409, "A reschedule request is already awaiting review.");
           await db.query(
             "INSERT INTO cancellation_requests(booking_id,reason) VALUES($1,$2)",
             [booking, reason],
@@ -431,6 +464,157 @@ export function routes(router, pool, auth) {
       send(res, result);
     },
   );
+
+  router.post(
+    "/bookings/:id/reschedules",
+    auth("CUSTOMER"),
+    /* Record requested dates without changing the confirmed stay. */ async (
+      req,
+      res,
+    ) => {
+      const bookingId = id(req.params.id);
+      const owner = req.user.user_id;
+      const {
+        start,
+        end,
+        reason: inputReason,
+      } = body(req, ["start", "end", "reason"]);
+      const reason = text(inputReason, 1000);
+      stay(start, end);
+      if (start <= today()) fail(400, "Choose a new check-in after today.");
+
+      const result = await transaction(
+        pool,
+        /* Save the request and its audit entry together. */ async (db) => {
+          const booking = await get(db, bookingId, owner);
+          if (booking.status !== "CONFIRMED" || booking.start <= today())
+            fail(409, "Only upcoming confirmed stays can be rescheduled.");
+          if (
+            booking.cancellation?.status === "PENDING" ||
+            booking.reschedule?.status === "PENDING"
+          )
+            fail(409, "This booking already has a request awaiting review.");
+          if (start === booking.start)
+            fail(400, "Choose a different check-in date.");
+          if (
+            Date.parse(end) - Date.parse(start) !==
+            Date.parse(booking.end) - Date.parse(booking.start)
+          )
+            fail(400, "Keep the same number of nights when rescheduling.");
+
+          await db.query(
+            `INSERT INTO reschedule_requests
+             (booking_id, original_check_in, original_check_out, requested_check_in, requested_check_out, reason)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+            [bookingId, booking.start, booking.end, start, end, reason],
+          );
+          await log(
+            db,
+            bookingId,
+            owner,
+            "RESCHEDULE_REQUESTED",
+            `Requested new dates: ${start} to ${end}.`,
+          );
+          return get(db, bookingId, owner);
+        },
+      );
+      send(res, result, 201);
+    },
+  );
+
+  router.patch(
+    "/bookings/:id/reschedules/:requestId",
+    auth("STAFF"),
+    /* Approve or decline a date change requested by the customer. */ async (
+      req,
+      res,
+    ) => {
+      const bookingId = id(req.params.id);
+      const requestId = id(req.params.requestId);
+      const actor = req.user.user_id;
+      const { decision, notes } = body(req, ["decision", "notes"]);
+      if (!["APPROVED", "DECLINED"].includes(decision))
+        fail(400, "Choose approve or decline.");
+      const note = text(notes, 1000, true);
+
+      const result = await transaction(
+        pool,
+        /* Commit the decision and any date change atomically. */ async (
+          db,
+        ) => {
+          const booking = await get(db, bookingId, null);
+          const {
+            rows: [change],
+          } = await db.query(
+            `SELECT status, original_check_in::text AS "originalStart", original_check_out::text AS "originalEnd",
+                  requested_check_in::text AS start, requested_check_out::text AS end
+           FROM reschedule_requests WHERE reschedule_request_id=$1 AND booking_id=$2`,
+            [requestId, bookingId],
+          );
+          if (!change) fail(404, "Reschedule request not found.");
+          if (change.status === decision) return booking;
+          if (change.status !== "PENDING")
+            fail(409, "This request has already been reviewed.");
+
+          if (decision === "APPROVED") {
+            if (
+              booking.status !== "CONFIRMED" ||
+              booking.start <= today() ||
+              change.start <= today() ||
+              booking.start !== change.originalStart ||
+              booking.end !== change.originalEnd
+            )
+              fail(
+                409,
+                "These dates can no longer be approved. Decline the request instead.",
+              );
+            await expire(db);
+            const room = await availableRoom(
+              db,
+              booking.roomTypeId,
+              change.start,
+              change.end,
+              bookingId,
+              booking.roomId,
+            );
+            if (!room)
+              fail(
+                409,
+                "This room type is no longer available for the requested dates.",
+              );
+            // PostgreSQL also checks that the pet has no other overlapping stay.
+            try {
+              await db.query(
+                "UPDATE bookings SET room_id=$2, check_in_date=$3, check_out_date=$4 WHERE booking_id=$1",
+                [bookingId, room.room_id, change.start, change.end],
+              );
+            } catch (error) {
+              if (error.constraint === "bookings_no_pet_overlap")
+                fail(
+                  409,
+                  "This pet already has a booking that overlaps the requested dates.",
+                );
+              throw error;
+            }
+          }
+
+          await db.query(
+            `UPDATE reschedule_requests SET status=$2, reviewed_by=$3, reviewed_at=now(), review_notes=$4
+           WHERE reschedule_request_id=$1`,
+            [requestId, decision, actor, note],
+          );
+          const details =
+            decision === "APPROVED"
+              ? `Stay moved from ${booking.start} to ${booking.end} to new dates ${change.start} to ${change.end}.`
+              : `Reschedule declined for ${change.start} to ${change.end}.`;
+          await log(db, bookingId, actor, "RESCHEDULE_" + decision, details);
+          return get(db, bookingId, null);
+        },
+      );
+      send(res, result);
+    },
+  );
+
   router.patch(
     "/bookings/:id/complete",
     auth("STAFF"),
@@ -447,7 +631,8 @@ export function routes(router, pool, auth) {
           if (
             current.status !== "CONFIRMED" ||
             current.end > today() ||
-            current.cancellation?.status === "PENDING"
+            current.cancellation?.status === "PENDING" ||
+            current.reschedule?.status === "PENDING"
           )
             fail(
               409,

@@ -1,4 +1,4 @@
-import { review, complete } from "../api/bookings.js";
+import { review, reviewReschedule, complete } from "../api/bookings.js";
 import { catalog, inventory, setActive } from "../api/rooms.js";
 import { today, toast } from "../helpers.js";
 // Create staff dashboard state and actions.
@@ -6,6 +6,7 @@ export default () => ({
   tab: "requests",
   query: "",
   target: null,
+  reviewKind: "cancel",
   approved: true,
   note: "",
   error: "",
@@ -20,11 +21,11 @@ export default () => ({
       ? this.$store.portal.bookings
       : [];
   },
-  // Return bookings with open cancellation requests.
+  // Return bookings with an open change request.
   get requests() {
     return this.all.filter(
-      /* Keep bookings whose cancellation is pending. */ (b) =>
-        b.cancellation?.status === "PENDING",
+      /* Keep bookings with a request for staff to review. */ (b) =>
+        this.hasPendingRequest(b),
     );
   },
   // Search the currently selected staff view.
@@ -50,35 +51,71 @@ export default () => ({
         b.status === "CONFIRMED" && b.start <= today() && b.end > today(),
     ).length;
   },
+  // Check whether the booking is waiting for a staff decision.
+  hasPendingRequest(booking) {
+    return (
+      booking.cancellation?.status === "PENDING" ||
+      booking.reschedule?.status === "PENDING"
+    );
+  },
+  // Get the active request for the review dialog.
+  get reviewRequest() {
+    return this.reviewKind === "reschedule"
+      ? this.target?.reschedule
+      : this.target?.cancellation;
+  },
+  // Check whether the active request can still be approved.
+  get canApprove() {
+    const date = today();
+    return (
+      this.target?.status === "CONFIRMED" &&
+      this.target.start > date &&
+      (this.reviewKind !== "reschedule" || this.reviewRequest?.start > date)
+    );
+  },
   // Check whether the stay can be marked complete.
   canComplete(b) {
     return (
-      b.status === "CONFIRMED" &&
-      b.end <= today() &&
-      b.cancellation?.status !== "PENDING"
+      b.status === "CONFIRMED" && b.end <= today() && !this.hasPendingRequest(b)
     );
   },
   // Open the review form and choose its default decision.
   openReview(b) {
     this.target = b;
-    this.approved = b.start > today();
+    this.reviewKind =
+      b.reschedule?.status === "PENDING" ? "reschedule" : "cancel";
+    this.approved = this.canApprove;
     this.note = "";
     this.error = "";
   },
-  // Save the cancellation decision and refresh the dashboard.
+  // Save the decision and refresh the dashboard.
   async submitReview() {
     if (this.busy) return;
     this.busy = true;
     this.error = "";
     try {
-      await review(this.target.cancellation.id, this.approved, this.note);
+      if (this.reviewKind === "reschedule") {
+        await reviewReschedule(
+          this.target.id,
+          this.reviewRequest.id,
+          this.approved,
+          this.note,
+        );
+        toast(
+          this.approved
+            ? "Reschedule approved. Booking dates updated."
+            : "Reschedule declined.",
+        );
+      } else {
+        await review(this.reviewRequest.id, this.approved, this.note);
+        toast(
+          this.approved
+            ? "Cancellation approved. Simulated refund recorded."
+            : "Cancellation declined.",
+        );
+      }
       this.target = null;
       await this.$store.portal.refresh();
-      toast(
-        this.approved
-          ? "Cancellation approved. Simulated refund recorded."
-          : "Cancellation declined.",
-      );
     } catch (error) {
       this.error = error.message;
     } finally {

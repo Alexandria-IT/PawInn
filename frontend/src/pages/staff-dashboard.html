@@ -37,8 +37,8 @@
       >
         <h3>A little space for our team.</h3>
         <p>
-          Use the staff account to review cancellation requests and manage stay
-          status.
+          Use the staff account to review booking change requests and manage
+          stay status.
         </p>
         <a
           href="/pages/login.html?next=%2Fpages%2Fstaff-dashboard.html"
@@ -61,7 +61,7 @@
           <article class="card stat-card bg-[#edf0e6]">
             <p class="eyebrow">WAITING FOR A LITTLE CARE</p>
             <strong x-text="requests.length"></strong>
-            <p class="text-xs muted mt-2">cancellation requests to review</p>
+            <p class="text-xs muted mt-2">change requests to review</p>
           </article>
           <article class="card stat-card">
             <p class="eyebrow">CONFIRMED STAYS</p>
@@ -80,7 +80,7 @@
               :class="{'selected':tab==='requests'}"
               :aria-pressed="tab==='requests'"
             >
-              Cancellation requests
+              Change requests
               <span x-text="requests.length" class="ml-1"></span></button
             ><button
               @click="tab='bookings'"
@@ -107,7 +107,7 @@
             <table>
               <caption
                 class="sr-only"
-                x-text="tab==='requests'?'Pending cancellation requests':'All bookings'"
+                x-text="tab==='requests'?'Pending change requests':'All bookings'"
               ></caption>
               <thead>
                 <tr>
@@ -145,13 +145,18 @@
                       <p
                         class="text-[10px] muted mt-1"
                         x-show="booking.cancellation"
-                        x-text="'Request: '+(booking.cancellation?.status||'')"
+                        x-text="'Cancellation: '+(booking.cancellation?.status||'')"
+                      ></p>
+                      <p
+                        class="text-[10px] muted mt-1"
+                        x-show="booking.reschedule"
+                        x-text="'Reschedule: '+(booking.reschedule?.status||'')"
                       ></p>
                     </td>
                     <td x-text="money(booking.total)"></td>
                     <td>
                       <button
-                        x-show="booking.cancellation?.status==='PENDING'"
+                        x-show="hasPendingRequest(booking)"
                         class="btn btn-soft btn-sm"
                         @click="openReview(booking)"
                       >
@@ -164,7 +169,7 @@
                         Complete stay</button
                       ><span
                         class="muted text-xs"
-                        x-show="booking.cancellation?.status!=='PENDING' && !canComplete(booking)"
+                        x-show="!hasPendingRequest(booking) && !canComplete(booking)"
                         >All settled for now</span
                       >
                     </td>
@@ -180,7 +185,7 @@
             x-text="query?'No matching stays.':'A little breathing room.'"
           ></h3>
           <p
-            x-text="query?'Try another customer name, pet name or booking reference.':'No cancellation requests are waiting.'"
+            x-text="query?'Try another customer name, pet name or booking reference.':'No change requests are waiting.'"
           ></p>
           <a href="/pages/rooms.html" class="text-link" x-show="!query"
             >Browse rooms →</a
@@ -241,7 +246,10 @@
           <div class="modal-title">
             <div>
               <p class="eyebrow mb-2" x-text="target?.id"></p>
-              <h2 id="review-title">A change of plans.</h2>
+              <h2
+                id="review-title"
+                x-text="reviewKind==='reschedule'?'Review reschedule':'A change of plans.'"
+              ></h2>
             </div>
             <button
               class="icon-btn shrink-0"
@@ -264,9 +272,23 @@
                 <span class="muted">Simulated payment</span
                 ><strong x-text="money(target.total)"></strong>
               </div>
+              <div x-show="reviewKind==='reschedule'" class="my-4">
+                <div class="summary-line">
+                  <span>Current dates</span>
+                  <span
+                    x-text="dateLabel(target.start)+' to '+dateLabel(target.end)"
+                  ></span>
+                </div>
+                <div class="summary-line">
+                  <span>Requested dates</span>
+                  <strong
+                    x-text="dateLabel(reviewRequest?.start)+' to '+dateLabel(reviewRequest?.end)"
+                  ></strong>
+                </div>
+              </div>
               <div class="notice my-4">
                 <p class="eyebrow mb-2">CUSTOMER’S REASON</p>
-                <p x-text="target.cancellation.reason"></p>
+                <p x-text="reviewRequest?.reason"></p>
               </div>
               <form @submit.prevent="submitReview()" class="space-y-4">
                 <fieldset>
@@ -274,15 +296,14 @@
                     Your decision
                   </legend>
                   <div class="flex gap-5">
-                    <label
-                      class="flex items-center gap-2"
-                      x-show="target.start>today()"
+                    <label class="flex items-center gap-2" x-show="canApprove"
                       ><input
                         type="radio"
                         name="decision"
                         value="true"
-                        x-model.boolean="approved"
-                      />Approve & refund</label
+                        x-model.boolean="approved" /><span
+                        x-text="reviewKind==='reschedule'?'Approve new dates':'Approve & refund'"
+                      ></span></label
                     ><label class="flex items-center gap-2"
                       ><input
                         type="radio"
@@ -305,11 +326,12 @@
                 <p class="error" x-show="error" x-text="error" role="alert"></p>
                 <p
                   class="text-xs muted"
-                  x-text="approved?'This releases the room and issues a full simulated refund.':'The stay remains confirmed and no refund is issued.'"
+                  x-text="reviewKind==='reschedule' ? (approved?'Approval moves the stay if a room is available.':'The stay keeps its current dates.') : (approved?'This releases the room and issues a full simulated refund.':'The stay remains confirmed and no refund is issued.')"
                 ></p>
                 <button
                   class="btn btn-primary w-full"
-                  x-text="approved?'Approve cancellation →':'Decline request →'"
+                  :disabled="busy"
+                  x-text="approved?(reviewKind==='reschedule'?'Approve reschedule →':'Approve cancellation →'):'Decline request →'"
                 ></button>
               </form></div
           ></template>

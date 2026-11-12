@@ -1,7 +1,5 @@
-# Local Jenkins for PawInn CI/CD - no setup needed.
-#   docker compose -f infra/jenkins/compose.yaml up -d --build
-#   open http://localhost:8081  ->  login admin / pawinn  ->  job "pawinn" is already there
-# Press "Build Now" once; when it is green the site is at http://localhost:8080
+# Start the local Jenkins controller from the PawInn checkout.
+# docker compose --env-file .env -f infra/jenkins/compose.yaml up -d --build
 name: pawinn-jenkins
 
 services:
@@ -11,17 +9,24 @@ services:
     # Fine for a local demo; do not expose this Jenkins to the internet.
     user: root
     environment:
-      JENKINS_ADMIN_ID: admin
-      JENKINS_ADMIN_PASSWORD: pawinn
-      PAWINN_REPO_URL: https://github.com/Alexandria-IT/PawInn.git
-      # test another branch without editing this file:
-      #   Command Prompt: set PAWINN_BRANCH=*/whai     PowerShell: $env:PAWINN_BRANCH="*/whai"
+      JENKINS_ADMIN_ID: ${JENKINS_ADMIN_ID:-admin}
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:-pawinn}
+      JENKINS_PORT: ${JENKINS_PORT:-8081}
+      PAWINN_REPO_URL: ${PAWINN_REPO_URL:-https://github.com/Alexandria-IT/PawInn.git}
       PAWINN_BRANCH: ${PAWINN_BRANCH:-*/main}
+      PAWINN_DEPLOY_PROJECT: ${PAWINN_DEPLOY_PROJECT:-pawinn}
     ports:
-      - "8081:8080"
+      - "127.0.0.1:${JENKINS_PORT:-8081}:8080"
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
+      # Share the settings used to initialize the application database.
+      - type: bind
+        source: ${PAWINN_ENV_FILE:-../../.env}
+        target: /var/jenkins_home/pawinn-local.env
+        read_only: true
+        bind:
+          create_host_path: false
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: unless-stopped

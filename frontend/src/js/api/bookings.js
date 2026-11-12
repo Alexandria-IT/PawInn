@@ -25,6 +25,26 @@ export const review = (id, approved, notes) =>
     decision: approved ? "APPROVED" : "DECLINED",
     notes,
   });
+// Request new dates for a confirmed booking.
+export const reschedule = (id, start, end, reason) =>
+  call("bookings/" + encodeURIComponent(id) + "/reschedules", "POST", {
+    start,
+    end,
+    reason,
+  });
+// Submit the staff decision on the requested dates.
+export const reviewReschedule = (bookingId, requestId, approved, notes) =>
+  call(
+    "bookings/" +
+      encodeURIComponent(bookingId) +
+      "/reschedules/" +
+      encodeURIComponent(requestId),
+    "PATCH",
+    {
+      decision: approved ? "APPROVED" : "DECLINED",
+      notes,
+    },
+  );
 // Mark an eligible stay complete.
 export const complete = (id) =>
   call("bookings/" + encodeURIComponent(id) + "/complete", "PATCH");

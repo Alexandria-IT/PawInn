@@ -292,6 +292,7 @@ async function verifyBookings() {
     ).length,
     1,
   );
+  await verifyRescheduling(confirmed, p, foreign, staff);
   const cancellationPath = "/api/bookings/" + booking.id + "/cancellations";
   const firstRequest = await request(
     cancellationPath,
@@ -367,5 +368,95 @@ async function verifyBookings() {
   );
   console.log(
     "PASS: catalog and inventory controls, concurrent last-room reservation, ownership, payment retries, cancellation decisions, one refund and restored availability.",
+  );
+}
+
+// Exercise both directions, declined requests, and conflicts on approval.
+async function verifyRescheduling(confirmed, customer, foreign, staff) {
+  const path = "/api/bookings/" + confirmed.id + "/reschedules";
+  const reason = "We need to move the stay";
+  const earlier = { start: days(offset - 1), end: days(offset + 1), reason };
+  const original = { start: confirmed.start, end: confirmed.end, reason };
+  await request(path, "POST", earlier, foreign.token, 404);
+  await request(
+    path,
+    "POST",
+    { ...earlier, end: confirmed.end },
+    customer.token,
+    400,
+  );
+
+  const pending = await request(path, "POST", earlier, customer.token, 201);
+  assert.equal(pending.start, confirmed.start);
+  assert.equal(pending.reschedule.status, "PENDING");
+  await request(path, "POST", earlier, customer.token, 409);
+  await request(
+    "/api/bookings/" + confirmed.id + "/cancellations",
+    "POST",
+    { reason },
+    customer.token,
+    409,
+  );
+
+  const reviewPath = path + "/" + pending.reschedule.id;
+  const approve = { decision: "APPROVED", notes: "New dates approved" };
+  await request(reviewPath, "PATCH", approve, customer.token, 403);
+  const moved = await request(reviewPath, "PATCH", approve, staff.token);
+  assert.equal(moved.start, earlier.start);
+  assert.equal(moved.end, earlier.end);
+  assert.equal(moved.roomId, confirmed.roomId);
+  assert.equal(moved.total, confirmed.total);
+  assert.equal(moved.paymentStatus, "SUCCESS");
+  assert.equal(moved.reschedule.originalStart, confirmed.start);
+  assert.equal(moved.reschedule.status, "APPROVED");
+
+  const replay = await request(reviewPath, "PATCH", approve, staff.token);
+  assert.equal(
+    replay.logs.filter(
+      /* Count approval events after replay. */ (entry) =>
+        entry.action === "RESCHEDULE_APPROVED",
+    ).length,
+    1,
+  );
+
+  const later = await request(path, "POST", original, customer.token, 201);
+  const movedBack = await request(
+    path + "/" + later.reschedule.id,
+    "PATCH",
+    approve,
+    staff.token,
+  );
+  assert.equal(movedBack.start, confirmed.start);
+  assert.equal(movedBack.end, confirmed.end);
+
+  const occupied = { start: days(offset + 35), end: days(offset + 37), reason };
+  await request(
+    "/api/bookings",
+    "POST",
+    {
+      petId: customer.pet.id,
+      roomTypeId: confirmed.roomTypeId,
+      start: occupied.start,
+      end: occupied.end,
+    },
+    customer.token,
+    201,
+  );
+  const conflict = await request(path, "POST", occupied, customer.token, 201);
+  const conflictPath = path + "/" + conflict.reschedule.id;
+  await request(conflictPath, "PATCH", approve, staff.token, 409);
+  const declined = await request(
+    conflictPath,
+    "PATCH",
+    { decision: "DECLINED", notes: "The pet already has another stay." },
+    staff.token,
+  );
+  assert.equal(declined.start, confirmed.start);
+  assert.equal(declined.end, confirmed.end);
+  assert.equal(declined.status, "CONFIRMED");
+  assert.equal(declined.reschedule.status, "DECLINED");
+  assert.equal(declined.reschedule.note, "The pet already has another stay.");
+  console.log(
+    "PASS: earlier and later reschedules, ownership, unchanged payment, retry, overlap conflict, and decline.",
   );
 }

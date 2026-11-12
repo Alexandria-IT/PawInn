@@ -1,11 +1,13 @@
-import { cancel } from "../api/bookings.js";
-import { today, toast } from "../helpers.js";
+import { cancel, reschedule } from "../api/bookings.js";
+import { addDays, nights, today, toast } from "../helpers.js";
 // Create state and actions for My Bookings.
 export default () => ({
   tab: "upcoming",
   query: "",
   detail: null,
-  cancelTarget: null,
+  requestTarget: null,
+  requestKind: "cancel",
+  newStart: "",
   reason: "",
   error: "",
   busy: false,
@@ -24,7 +26,7 @@ export default () => ({
             (this.tab === "all" ||
               (this.tab === "upcoming" && active) ||
               (this.tab === "history" && !active) ||
-              (this.tab === "requests" && b.cancellation)) &&
+              (this.tab === "requests" && (b.cancellation || b.reschedule))) &&
             `${b.id} ${b.petName}`
               .toLowerCase()
               .includes(this.query.toLowerCase())
@@ -36,31 +38,50 @@ export default () => ({
           b.createdAt.localeCompare(a.createdAt),
       );
   },
-  // Check whether the customer can request cancellation.
-  canCancel(b) {
+  // Check whether the customer can request a change to this stay.
+  canRequestChange(b) {
     return (
       b.status === "CONFIRMED" &&
       b.start > today() &&
-      b.cancellation?.status !== "PENDING"
+      b.cancellation?.status !== "PENDING" &&
+      b.reschedule?.status !== "PENDING"
     );
   },
-  // Prepare the cancellation form for the selected booking.
-  openCancel(b) {
+  // Preserve the length of the stay when the check-in moves.
+  get newEnd() {
+    if (!this.requestTarget || !this.newStart) return "";
+    return addDays(
+      this.newStart,
+      nights(this.requestTarget.start, this.requestTarget.end),
+    );
+  },
+  // Open the shared booking change form.
+  openRequest(booking, kind) {
     this.detail = null;
-    this.cancelTarget = b;
+    this.requestTarget = booking;
+    this.requestKind = kind;
+    this.newStart = "";
     this.reason = "";
     this.error = "";
   },
-  // Send the request and refresh booking status.
-  async submitCancel() {
+  // Send the change request and refresh booking status.
+  async submitRequest() {
     if (this.busy) return;
     this.busy = true;
     this.error = "";
     try {
-      await cancel(this.cancelTarget.id, this.reason);
+      const bookingId = this.requestTarget.id;
+      const moving = this.requestKind === "reschedule";
+      if (moving)
+        await reschedule(bookingId, this.newStart, this.newEnd, this.reason);
+      else await cancel(bookingId, this.reason);
       await this.$store.portal.refresh();
-      this.cancelTarget = null;
-      toast("Cancellation request sent for staff review.");
+      this.requestTarget = null;
+      toast(
+        moving
+          ? "Reschedule request sent for staff review."
+          : "Cancellation request sent for staff review.",
+      );
     } catch (error) {
       this.error = error.message;
     } finally {

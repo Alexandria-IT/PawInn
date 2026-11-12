@@ -216,9 +216,9 @@ export function createService({ express, jwt, pool, secret, routes, tables }) {
 }
 
 // Start the service when its entry point is run directly.
-export function runService(
+export async function runService(
   file,
-  { express, pg, jwt, name, port, routes, tables },
+  { express, pg, jwt, name, port, routes, tables, prepare },
 ) {
   if (!process.argv[1] || resolve(process.argv[1]) !== fileURLToPath(file))
     return;
@@ -247,6 +247,14 @@ export function runService(
     routes,
     tables,
   });
+  if (prepare) {
+    try {
+      await prepare(pool);
+    } catch (error) {
+      await pool.end();
+      throw error;
+    }
+  }
   const server = app.listen(
     Number(process.env[name.toUpperCase() + "_PORT"] || port),
     process.env.SERVICE_HOST || "127.0.0.1",

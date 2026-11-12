@@ -1,6 +1,6 @@
 # PawInn
 
-PawInn is a pet hotel booking portal. The HTML/Tailwind/Alpine frontend talks to Account, Room and Booking Express services, backed by one shared PostgreSQL database. Customers manage pets, find available rooms, reserve stays and request cancellation. Staff manage inventory and review requests. Checkout and refunds are simulated and collect no payment details.
+PawInn is a pet hotel booking portal. The HTML/Tailwind/Alpine frontend talks to Account, Room and Booking Express services, backed by one shared PostgreSQL database. Customers manage pets, find available rooms, reserve stays, and request cancellation or rescheduling. Staff manage inventory and review requests. Checkout and refunds are simulated and collect no payment details.
 
 ## Run from scratch
 
@@ -64,11 +64,23 @@ Sign in with the new staff account to open the dashboard.
 - If a container fails to start, check `docker compose ps -a` and `docker compose logs --tail=100`.
 - If port `8080` is occupied, set `FRONTEND_PORT` to a free port in `.env` and open PawInn on that port. If `5432` is occupied, change `POSTGRES_PORT`. Run the startup command again after editing `.env`.
 
+## Run Jenkins in Docker
+
+Complete the `.env` setup above. From the repository root, start the controller:
+
+```sh
+docker compose --env-file .env -f infra/jenkins/compose.yaml up -d --build
+```
+
+Open [local Jenkins](http://localhost:8081), sign in, and choose **pawinn → Build Now**. The local demo login is `admin` / `pawinn`. Set `JENKINS_ADMIN_PASSWORD` in `.env` before starting Jenkins to choose your own password.
+
+Jenkins checks out `main`, runs the tests in Docker, and deploys the tested images. The controller mounts the existing `.env` read-only, so a deployment uses the same PostgreSQL credentials and ports as a manual startup. The Jenkins and PostgreSQL volumes retain their state when the containers stop. The setup uses Docker Compose and runs Node.js, PostgreSQL, and Jenkins in containers.
+
 ## Verify the release
 
 From Linux or a Docker-capable course shell, run `sh scripts/verify.sh`. It creates a disposable stack, runs SQL and HTTP checks, and removes only its own test containers and volume. See the [verification walkthrough](docs/local-demo.md) and [deployment notes](docs/architecture.md#delivery) for Jenkins setup and the course container.
 
-The GitHub Actions workflow runs the same verification on pushes and PRs. Jenkins builds and verifies the commit, then deploys the tested images on main using the deployment .env credential. Do not treat local checks as formal course-container results.
+The GitHub Actions workflow runs the same verification on pushes and PRs. Jenkins builds and verifies the commit, then deploys the tested images from main using the configured deployment settings. Do not treat local checks as formal course-container results.
 
 ## Project map
 

@@ -4,13 +4,17 @@
 //
 // - "Build and verify" runs scripts/verify.sh (the same check as GitHub Actions): builds every
 //   image tagged with this commit, starts a disposable stack, runs SQL + HTTP tests, removes it.
-// - "Deploy" starts exactly those tested images as project "pawinn" -> http://localhost:8080
+// - "Deploy" starts the tested images in the configured Compose project (default: pawinn).
 //   Settings come from the Jenkins credential "pawinn-env" (Secret file) when it exists,
 //   otherwise from the local settings file in JENKINS_HOME.
-// - Triggers: GitHub webhook when Jenkins is reachable, otherwise polling every 2 minutes.
+// - The local controller polls GitHub once a minute.
 
 pipeline {
     agent any
+
+    environment {
+        DEPLOY_PROJECT = "${env.PAWINN_DEPLOY_PROJECT ?: 'pawinn'}"
+    }
 
     triggers {
         githubPush()
@@ -73,7 +77,7 @@ pipeline {
                             umask 077
                             LOCAL_ENV="$JENKINS_HOME/pawinn-local.env"
                             if [ ! -f "$LOCAL_ENV" ]; then
-                                if docker volume inspect pawinn_postgres_data >/dev/null 2>&1; then
+                                if docker volume inspect "${DEPLOY_PROJECT}_postgres_data" >/dev/null 2>&1; then
                                     echo 'PawInn already has a database volume. Configure pawinn-env with its existing settings.' >&2
                                     exit 1
                                 fi
@@ -88,22 +92,22 @@ pipeline {
                         '''
                     }
                 }
-                sh 'sh scripts/deploy.sh deploy.env'
+                sh 'sh scripts/deploy.sh deploy.env "$DEPLOY_PROJECT"'
             }
         }
 
         stage('Smoke test') {
             when { expression { env.BRANCH_NAME == null || env.BRANCH_NAME == 'main' } }
             steps {
-                // Checked from inside the "pawinn" network, so it works whether Jenkins
-                // runs on the host or in a container.
+                // Check the deployed frontend from inside its own container.
                 sh '''
                     set -eu
                     for path in /pages/rooms.html /api/room-types; do
-                        docker run --rm --network pawinn_default curlimages/curl:latest \
-                            -fsS -o /dev/null --retry 10 --retry-delay 3 --retry-all-errors \
-                            -w "http://frontend$path -> %{http_code}\\n" "http://frontend$path"
+                        docker compose --env-file deploy.env -p "$DEPLOY_PROJECT" exec -T frontend \
+                            wget -q -O /dev/null "http://127.0.0.1$path"
+                        echo "$path -> OK"
                     done
+                    docker compose --env-file deploy.env -p "$DEPLOY_PROJECT" port frontend 80
                 '''
             }
         }
@@ -114,10 +118,10 @@ pipeline {
             junit allowEmptyResults: true, testResults: 'frontend/test-results/*.xml'
         }
         success {
-            echo 'PawInn is running at http://localhost:8080'
+            echo 'PawInn deployment and smoke checks passed'
         }
         failure {
-            sh '[ -f deploy.env ] && docker compose --env-file deploy.env -p pawinn logs --no-color --tail=100 || true'
+            sh '[ -f deploy.env ] && docker compose --env-file deploy.env -p "$DEPLOY_PROJECT" logs --no-color --tail=100 || true'
         }
         cleanup {
             sh 'rm -f deploy.env'
