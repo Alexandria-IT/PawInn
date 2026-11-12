@@ -1,12 +1,8 @@
 # PawInn
 
-<<<<<<< HEAD
-PawInn is a pet hotel booking portal. The HTML/Tailwind/Alpine frontend talks to Account, Room and Booking Express services, backed by one shared PostgreSQL database. Customers manage pets, find available rooms, reserve stays, and request cancellation or rescheduling. Staff manage inventory, review requests, and record actual arrival, pickup, daily reports and individual care events. Customers can leave special-care instructions, read informal messages on **Pet Updates**, and open **Care during stay** from a booking for its dated history. Admins manage accounts and review account changes. Payments, reschedule adjustments and refunds are simulated.
-=======
-PawInn is a pet hotel booking portal for dogs and cats. Customers can check room availability, book a stay, and leave special-care instructions. Staff can manage room inventory, review booking changes, and send customers private text or photo updates.
->>>>>>> b4fbdf50f3bc0c09fa210be95a2c9b10fd6f14d5
+PawInn is a pet hotel booking portal for dogs and cats. Customers can check room availability, book a stay, and leave special-care instructions. Staff manage rooms, review booking changes, and record how pets are doing during their stay. Admins manage accounts and review account changes.
 
-**Payments and refunds are simulated.** PawInn does not collect card details or charge money.
+**Payments, reschedule adjustments, and refunds are simulated.** PawInn does not collect card details or charge money.
 
 ## Start PawInn with Docker
 
@@ -38,22 +34,9 @@ You'll need **Git** and **Docker Compose**. Start Docker Desktop on Windows or m
 
 4. Open [PawInn at localhost:8080](http://localhost:8080). On first startup, PawInn creates its database tables and adds **15 rooms** (five per room type).
 
-## Try a booking
+## Set up Admin and Staff access
 
-<<<<<<< HEAD
-### 4. Create the first Admin and add staff
-
-Use an email that is new to PawInn and a password of at least 12 characters. Replace `admin@example.com` in the command you use. Run this once on your installation; there is no default PawInn Admin password.
-=======
-1. **Customer:** Choose **Sign in → Create an account**, then add a dog or cat under **My pets**. In **Our rooms**, choose dates and a compatible room. Select your pet and add any optional care instructions, then complete the simulated checkout.
-2. **Booking changes:** Open **My bookings → View details** to request cancellation or reschedule an upcoming confirmed stay. Rescheduling moves the dates while keeping the same number of nights. The current reservation stays in place while staff reviews the request.
-3. **Staff:** Sign in with a staff account (see below). Use **Change requests** to review requests. To read care instructions or send an update, go to **All bookings → Care & updates** on a confirmed booking.
-4. **Customer:** Open **Pet Updates** to see your pet's messages and photos. Other customers cannot see them.
-
-### Create a staff account
->>>>>>> b4fbdf50f3bc0c09fa210be95a2c9b10fd6f14d5
-
-Use an email address that is new to PawInn and a password of at least 12 characters. Replace `staff@example.com` with the staff email.
+The customer flow works without an Admin account. To try the staff dashboard, first create one Admin for your database. Use an unused email address and a password of at least 12 characters (up to 72 bytes). Replace `admin@example.com` with your email.
 
 **Windows (PowerShell 7):**
 
@@ -72,13 +55,14 @@ printf '%s\n' "$admin_password" | docker compose exec -T account node bootstrap-
 unset admin_password
 ```
 
-<<<<<<< HEAD
-Sign in with the Admin account to open **Account administration**. Create a Staff account there, then sign in with it to open the staff dashboard. For confirmed stays, use **All bookings → Stay care** to record attendance and care. Customers can open the same stay’s history from **My bookings → Details → Care during stay**.
-=======
-Sign in with that account to open the staff dashboard.
->>>>>>> b4fbdf50f3bc0c09fa210be95a2c9b10fd6f14d5
+Sign in to PawInn with the new Admin account. In **Account administration**, choose **Create staff account**. Use that Staff account to sign in to the staff dashboard. Admins can also change staff access, suspend or reactivate accounts, and see changes in **Audit history**.
 
-> **Release note:** The Admin portal, actual arrival and pickup, daily photo reports, individual care records, and rescheduling with price adjustments are not yet part of GitHub's `main` branch. The steps above work with the code available here today.
+## Try a booking
+
+1. **Customer:** Choose **Sign in → Create an account** and add a dog or cat under **My pets**. Go to **Our rooms**, select your saved pet and dates, and choose a room. Add any special-care instructions and complete the simulated checkout. Use **Edit booking details** during checkout if you need to change the reservation before paying.
+2. **Booking changes:** Open **My bookings → View details** on an upcoming confirmed stay to request cancellation or new dates. For a reschedule, review the new total and any simulated charge or refund before sending. The original dates stay booked while staff reviews the request.
+3. **Staff:** Use **Change requests** to review booking changes. Under **All bookings → Stay care**, record actual arrival and pickup, publish daily reports with photos, and log individual care events. Use **Send pet update** to send a separate message or photo.
+4. **Customer:** Open **Pet Updates** for messages and photos. For daily reports and care records, go to **My bookings → View details → Care during stay**. The history stays available after pickup.
 
 ## Stop or troubleshoot
 
@@ -88,7 +72,7 @@ Sign in with that account to open the staff dashboard.
 
 ## Tests and Jenkins
 
-- **Run tests locally:** In a shell with Docker access, run `sh scripts/verify.sh` from the repository root. It builds an isolated test stack, checks the database and booking flows, and removes its own test containers and database.
+- **Run tests locally:** In a shell with Docker access, run `sh scripts/verify.sh` from the repository root. It builds an isolated test stack, checks the database, booking, care, and Admin flows, and removes its own test containers and database.
 - **GitHub Actions** runs the verification script on pushes and pull requests.
 - **Jenkins** checks out `main` by default, tests it, and deploys the tested images to the local Docker stack. Jenkins uses the same `.env` as a manual startup. Keep the original database settings when deploying over an existing PostgreSQL volume.
 
@@ -104,20 +88,11 @@ Open [Jenkins at localhost:8081](http://localhost:8081), sign in as `admin` with
 
 | Folder | What's inside |
 | --- | --- |
-<<<<<<< HEAD
-| frontend | Customer/staff pages and Nginx routes |
-| services/account | Registration, sign-in, pets, and Admin account management |
-| services/room | Catalog and inventory |
-| services/booking | Reservations, simulated checkout and adjustments, change requests, stay care and audit history |
-| database | Schema, initial room inventory, and optional test fixtures |
-| scripts / tests | Disposable-stack verification |
-=======
 | `frontend/` | HTML, Tailwind CSS, Alpine.js, and Nginx |
-| `services/account/` | Sign-in, registration, and pet profiles |
+| `services/account/` | Sign-in, registration, pet profiles, and Admin account management |
 | `services/room/` | Room catalog and inventory |
-| `services/booking/` | Availability, reservations, simulated checkout, change requests, and pet updates |
+| `services/booking/` | Availability, reservations, simulated checkout, change requests, stay care, and pet updates |
 | `database/` | Shared PostgreSQL schema, room inventory, and optional test data |
 | `scripts/` and `tests/` | Docker verification and integration tests |
->>>>>>> b4fbdf50f3bc0c09fa210be95a2c9b10fd6f14d5
 
 The three backend services use Node.js and Express with one shared PostgreSQL database. See the [API guide](docs/api.md), [database guide](database/README.md), and [team assignments](docs/team.md).
