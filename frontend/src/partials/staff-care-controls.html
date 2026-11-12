@@ -57,6 +57,15 @@
   >
     Record care entry
   </button>
+  <button
+    type="button"
+    class="btn btn-outline btn-sm"
+    x-show="careData?.status === 'CONFIRMED'"
+    :disabled="careWriting || careLoading"
+    @click="openQuickUpdate()"
+  >
+    Send a quick update
+  </button>
 </div>
 
 <div class="border-y border-stone-200 py-4 mb-4" x-show="careForm">
@@ -64,7 +73,7 @@
     class="text-lg mb-3"
     x-ref="careEditor"
     tabindex="-1"
-    x-text="({ arrival: 'Record actual arrival', pickup: 'Record actual pickup', report: selectedReport ? 'Edit daily report' : 'Publish daily report', event: careEvent?.id ? 'Edit care entry' : 'Record care entry' })[careForm]"
+    x-text="({ arrival: 'Record actual arrival', pickup: 'Record actual pickup', report: selectedReport ? 'Edit daily report' : 'Publish daily report', event: careEvent?.id ? 'Edit care entry' : 'Record care entry', update: 'Send a quick update' })[careForm]"
   ></h3>
   <template x-if="careForm === 'arrival' || careForm === 'pickup'">
     <form @submit.prevent="submitAttendance()">
@@ -170,6 +179,25 @@
         </template>
         <div class="flex flex-wrap gap-2">
           <button class="btn btn-primary btn-sm" type="submit" x-text="careEvent.id ? 'Save changes' : 'Record care entry'"></button>
+          <button class="btn btn-outline btn-sm" type="button" @click="closeCareForm()">Cancel</button>
+        </div>
+      </fieldset>
+    </form>
+  </template>
+  <template x-if="careForm === 'update'">
+    <form @submit.prevent="submitQuickUpdate()">
+      <fieldset class="space-y-3" :disabled="careWriting">
+        <p class="text-sm muted">Send a message, a photo, or both to the owner's Pet Updates feed.</p>
+        <label>
+          Message
+          <textarea x-model="quickUpdateMessage" rows="4" maxlength="2000"></textarea>
+        </label>
+        <label>
+          Photo (JPEG, PNG or WebP, up to 2 MB)
+          <input type="file" x-ref="quickUpdatePhoto" accept="image/jpeg,image/png,image/webp" />
+        </label>
+        <div class="flex flex-wrap gap-2">
+          <button class="btn btn-primary btn-sm" type="submit">Send update</button>
           <button class="btn btn-outline btn-sm" type="button" @click="closeCareForm()">Cancel</button>
         </div>
       </fieldset>

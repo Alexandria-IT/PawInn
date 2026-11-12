@@ -5,6 +5,7 @@ import {
   saveCareEvent,
   saveDailyReport,
 } from "../api/stay-care.js";
+import { postPetUpdate } from "../api/bookings.js";
 import { dateLabel, toast } from "../helpers.js";
 
 const bangkok = "Asia/Bangkok";
@@ -63,13 +64,23 @@ export default (isStaff) => ({
   attendanceTime: "",
   reportDate: "",
   reportMessage: "",
+  quickUpdateMessage: "",
   eventDate: "",
   careEvent: null,
 
   // Clear booking-specific state when the modal or session changes.
   init() {
     this.$watch("$store.portal.user?.id", () => this.resetCare());
-    if (!this.isStaff) this.$watch("detail?.id", () => this.resetCare());
+    if (!this.isStaff) {
+      this.$watch("detail?.id", () => this.syncCustomerBooking());
+      this.syncCustomerBooking();
+    }
+  },
+
+  // Open the care tab when the customer follows a link from Pet Updates.
+  syncCustomerBooking() {
+    this.resetCare();
+    if (this.openCareOnDetail && this.hasCareTab(this.detail)) this.selectCareTab("care");
   },
 
   // Invalidate pending reads and return to the initial view.
@@ -86,6 +97,7 @@ export default (isStaff) => ({
     this.attendanceTime = "";
     this.reportDate = "";
     this.reportMessage = "";
+    this.quickUpdateMessage = "";
     this.eventDate = "";
     this.careEvent = null;
   },
@@ -269,6 +281,35 @@ export default (isStaff) => ({
     return this.writeCare(
       (id) => saveDailyReport(id, this.reportDate, this.reportMessage.trim(), photos),
       this.selectedReport ? "Daily report updated." : "Daily report published.",
+    );
+  },
+
+  // Open a fresh editor for an optional message and photo.
+  openQuickUpdate() {
+    this.quickUpdateMessage = "";
+    if (this.$refs.quickUpdatePhoto) this.$refs.quickUpdatePhoto.value = "";
+    this.showCareForm("update");
+  },
+
+  // Send one private message or photo from the booking's care screen.
+  submitQuickUpdate() {
+    const message = this.quickUpdateMessage.trim();
+    const photo = this.$refs.quickUpdatePhoto.files[0];
+    if (!message && !photo) {
+      this.careFormError = "Write a message or attach a photo.";
+      return;
+    }
+    if (photo && !photoTypes.includes(photo.type)) {
+      this.careFormError = "Choose a JPEG, PNG, or WebP photo.";
+      return;
+    }
+    if (photo?.size > photoLimit) {
+      this.careFormError = "Choose a photo up to 2 MB.";
+      return;
+    }
+    return this.writeCare(
+      (id) => postPetUpdate(id, message, photo),
+      "Pet update sent.",
     );
   },
 

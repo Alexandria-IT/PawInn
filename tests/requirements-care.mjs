@@ -70,6 +70,21 @@ export async function verifyCare({ request, staff, customer, foreign, booking, o
   await report(calendarDate(4), "Before arrival", png, "image/png", 409);
   const originalReport = await report(arrivalDay, "Ate dinner normally.", png, "image/png", 201);
   const originalPhoto = originalReport.photos[0].id;
+  const feedPath = "/api/bookings/updates";
+  const reportFeedId = "report:" + originalReport.id;
+  const feed = await request(feedPath, "GET", null, customerToken);
+  const published = feed.updates.find(({ id }) => id === reportFeedId);
+  assert.ok(published, "Publishing a daily report should add it to Pet Updates.");
+  assert.equal(published.kind, "report");
+  assert.equal(published.bookingId, booking.id);
+  assert.equal(published.reportDate, arrivalDay);
+  assert.equal(published.message, originalReport.message);
+  assert.equal(published.photoId, originalPhoto);
+  const older = await request(feedPath + "?before=" + encodeURIComponent(reportFeedId), "GET", null, customerToken);
+  assert.ok(older.updates.some(({ kind }) => kind === "update"), "Older quick updates should remain available past a report cursor.");
+  assert.ok(!older.updates.some(({ id }) => id === reportFeedId));
+  const otherFeed = await request(feedPath, "GET", null, foreignToken);
+  assert.ok(!otherFeed.updates.some(({ id }) => id === reportFeedId));
   await photo(originalPhoto, customerToken, 200, "image/png", png);
   await photo(originalPhoto, staffToken, 200, "image/png", png);
   await photo(originalPhoto, foreignToken, 404);
@@ -105,6 +120,11 @@ export async function verifyCare({ request, staff, customer, foreign, booking, o
   await report(calendarDate(0), "After pickup", png, "image/png", 409);
   const replacement = await report(arrivalDay, "Ate the full meal.", jpeg, "image/png");
   assert.equal(replacement.id, originalReport.id);
+  const correctedFeed = await request(feedPath, "GET", null, customerToken);
+  const matchingReports = correctedFeed.updates.filter(({ id }) => id === reportFeedId);
+  assert.equal(matchingReports.length, 1, "Editing a report should update the existing feed entry.");
+  assert.equal(matchingReports[0].message, replacement.message);
+  assert.equal(matchingReports[0].photoId, replacement.photos[0].id);
   assert.deepEqual(
     (await report(arrivalDay, "Ate the full meal.")).photos,
     replacement.photos,

@@ -65,19 +65,43 @@ export function registerUpdateRoutes(router, pool, auth, { getBooking, log }) {
     "/bookings/updates",
     auth("CUSTOMER"),
     /* List only the signed-in customer's updates. */ async (req, res) => {
-      const before =
-        req.query.before === undefined ? null : id(req.query.before);
+      const cursor = req.query.before;
+      const reportCursor = typeof cursor === "string" && cursor.startsWith("report:");
+      const before = cursor === undefined ? null : id(reportCursor ? cursor.slice(7) : cursor);
       const { rows } = await pool.query(
-        `SELECT u.pet_update_id::text AS id, b.booking_id::text AS "bookingId",
-                p.name AS "petName", u.message, u.created_at AS "createdAt",
-                u.photo_type IS NOT NULL AS "hasPhoto"
-         FROM pet_updates u
-         JOIN bookings b USING (booking_id)
-         JOIN pets p USING (pet_id)
-         WHERE b.user_id=$1 AND ($2::integer IS NULL OR u.pet_update_id<$2)
-         ORDER BY u.pet_update_id DESC
-         LIMIT $3`,
-        [req.user.user_id, before, pageSize + 1],
+        `WITH owned_bookings AS (
+           SELECT b.booking_id, p.name AS pet_name
+           FROM bookings b JOIN pets p USING (pet_id)
+           WHERE b.user_id=$1
+         ), feed AS (
+           SELECT 0 AS source, u.pet_update_id AS record_id, u.booking_id,
+                  b.pet_name, u.message, u.created_at,
+                  u.photo_type IS NOT NULL AS has_photo, NULL::date AS report_date
+           FROM pet_updates u JOIN owned_bookings b USING (booking_id)
+           UNION ALL
+           SELECT 1, r.report_id, r.booking_id, b.pet_name, r.message,
+                  r.created_at, TRUE, r.care_date
+           FROM booking_care_reports r JOIN owned_bookings b USING (booking_id)
+         ), cursor_row AS (
+           SELECT created_at, source, record_id FROM feed
+           WHERE record_id=$2 AND source=$3
+         )
+         SELECT CASE WHEN f.source=1 THEN 'report:' || f.record_id ELSE f.record_id::text END AS id,
+                CASE WHEN f.source=1 THEN 'report' ELSE 'update' END AS kind,
+                f.booking_id::text AS "bookingId", f.pet_name AS "petName",
+                f.message, f.created_at AS "createdAt", f.has_photo AS "hasPhoto",
+                f.report_date::text AS "reportDate",
+                CASE WHEN f.source=1 THEN (
+                  SELECT p.photo_id::text FROM booking_care_photos p
+                  WHERE p.report_id=f.record_id AND p.is_current
+                  ORDER BY p.photo_id LIMIT 1
+                ) END AS "photoId"
+         FROM feed f
+         WHERE $2::integer IS NULL OR
+           (f.created_at, f.source, f.record_id) < (SELECT * FROM cursor_row)
+         ORDER BY f.created_at DESC, f.source DESC, f.record_id DESC
+         LIMIT $4`,
+        [req.user.user_id, before, reportCursor ? 1 : 0, pageSize + 1],
       );
       const updates = rows.slice(0, pageSize);
       send(res, {

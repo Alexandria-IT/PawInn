@@ -1,4 +1,6 @@
 import { listPetUpdates, fetchPetUpdatePhoto } from "../api/bookings.js";
+import { fetchStayCarePhoto } from "../api/stay-care.js";
+import { dateLabel } from "../helpers.js";
 
 // Load updates for the active customer and append older pages on request.
 export default () => ({
@@ -44,6 +46,11 @@ export default () => ({
       if (requestNumber === this.requestNumber) this.loading = false;
     }
   },
+  reportDateLabel: dateLabel,
+  // Link to this booking's care history in My bookings.
+  careLink(bookingId) {
+    return "/pages/bookings.html?careBooking=" + encodeURIComponent(bookingId);
+  },
   // Format the time of an update in the hotel's local time zone.
   timestamp(value) {
     return new Intl.DateTimeFormat("en-GB", {
@@ -55,7 +62,7 @@ export default () => ({
 });
 
 // Fetch a private photo with the customer's bearer token.
-export function petUpdatePhoto(updateId) {
+export function petUpdatePhoto(update) {
   const controller = new AbortController();
   return {
     source: "",
@@ -63,7 +70,10 @@ export function petUpdatePhoto(updateId) {
     // Create a browser-only URL for the authenticated image response.
     async init() {
       try {
-        const photo = await fetchPetUpdatePhoto(updateId, controller.signal);
+        const { signal } = controller;
+        const photo = await (update.kind === "report"
+          ? fetchStayCarePhoto(update.bookingId, update.photoId, signal)
+          : fetchPetUpdatePhoto(update.id, signal));
         if (!controller.signal.aborted)
           this.source = URL.createObjectURL(photo);
       } catch (error) {

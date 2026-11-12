@@ -15,7 +15,7 @@
         <div>
           <h1>Pet Updates</h1>
           <p class="muted">
-            Messages and photos from the PawInn team during your pet’s stay.
+            Daily reports, messages, and photos from the PawInn team.
           </p>
         </div>
         <button
@@ -47,10 +47,10 @@
           x-show="loaded && !items.length && !loading && !error"
         >
           <h2>No pet updates yet.</h2>
-          <p>Updates from staff will appear here.</p>
+          <p>Daily reports and quick updates from staff will appear here.</p>
         </div>
         <div class="grid gap-4 sm:grid-cols-2">
-          <template x-for="update in items" :key="update.id">
+          <template x-for="update in items" :key="update.id + ':' + (update.photoId || '')">
             <article class="card padded">
               <div class="flex flex-wrap justify-between gap-2 items-start">
                 <div>
@@ -67,12 +67,17 @@
                 ></time>
               </div>
               <p
+                class="mt-4 text-sm font-semibold"
+                x-show="update.kind === 'report'"
+                x-text="'Daily report · ' + reportDateLabel(update.reportDate)"
+              ></p>
+              <p
                 class="mt-4 whitespace-pre-wrap break-words"
                 x-show="update.message"
                 x-text="update.message"
               ></p>
-              <template x-if="update.hasPhoto">
-                <div class="mt-4" x-data="petUpdatePhoto(update.id)">
+              <template x-if="update.kind === 'report' ? update.photoId : update.hasPhoto">
+                <div class="mt-4" x-data="petUpdatePhoto(update)">
                   <p
                     class="text-xs muted"
                     x-show="!source && !error"
@@ -94,6 +99,11 @@
                   />
                 </div>
               </template>
+              <a
+                class="text-link mt-4 inline-block"
+                :href="careLink(update.bookingId)"
+                :aria-label="'View stay care for ' + update.petName + ', booking ' + update.bookingId"
+              >View stay care</a>
             </article>
           </template>
         </div>

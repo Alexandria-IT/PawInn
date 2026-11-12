@@ -61,8 +61,8 @@ Sign in to PawInn with the new Admin account. In **Account administration**, cho
 
 1. **Customer:** Choose **Sign in → Create an account** and add a dog or cat under **My pets**. Go to **Our rooms**, select your saved pet and dates, and choose a room. Add any special-care instructions and complete the simulated checkout. Use **Edit booking details** during checkout if you need to change the reservation before paying.
 2. **Booking changes:** Open **My bookings → View details** on an upcoming confirmed stay to request cancellation or new dates. For a reschedule, review the new total and any simulated charge or refund before sending. The original dates stay booked while staff reviews the request.
-3. **Staff:** Use **Change requests** to review booking changes. Under **All bookings → Stay care**, record actual arrival and pickup, publish daily reports with photos, and log individual care events. Use **Send pet update** to send a separate message or photo.
-4. **Customer:** Open **Pet Updates** for messages and photos. For daily reports and care records, go to **My bookings → View details → Care during stay**. The history stays available after pickup.
+3. **Staff:** Use **Change requests** to review booking changes. Under **All bookings → Stay care**, record actual arrival and pickup, publish daily reports with photos, and log individual care events. Use **Send a quick update** in the same screen to send an extra message or photo.
+4. **Customer:** Open **Pet Updates** for published daily reports and quick updates. Select **View stay care** to open the booking's full care history, which is also available under **My bookings → View details → Care during stay**. The history stays available after pickup.
 
 ## Stop or troubleshoot
 

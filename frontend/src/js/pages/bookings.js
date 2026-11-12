@@ -5,6 +5,7 @@ export default () => ({
   tab: "upcoming",
   query: "",
   detail: null,
+  openCareOnDetail: false,
   requestTarget: null,
   requestKind: "cancel",
   newStart: "",
@@ -14,10 +15,27 @@ export default () => ({
   reason: "",
   error: "",
   busy: false,
-  // Open the history tab when requested by the URL.
+  // Open the requested history tab or the booking linked from Pet Updates.
   init() {
-    if (new URLSearchParams(location.search).get("tab") === "history")
-      this.tab = "history";
+    const params = new URLSearchParams(location.search);
+    if (params.get("tab") === "history") this.tab = "history";
+    const bookingId = params.get("careBooking");
+    if (!bookingId) return;
+    const openLinkedBooking = () => {
+      if (this.$store.portal.user?.role !== "CUSTOMER") return;
+      const booking = this.$store.portal.bookings.find(({ id }) => id === bookingId);
+      if (booking) {
+        this.tab = "all";
+        this.openDetails(booking, true);
+      }
+    };
+    if (this.$store.portal.ready) openLinkedBooking();
+    else this.$watch("$store.portal.ready", openLinkedBooking);
+  },
+  // Open the booking dialog and optionally start on its care tab.
+  openDetails(booking, showCare = false) {
+    this.openCareOnDetail = showCare;
+    this.detail = booking;
   },
   // Return matching bookings in newest-first order.
   get items() {

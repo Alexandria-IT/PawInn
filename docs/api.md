@@ -71,7 +71,7 @@ Deactivation returns 409 when a room has a current or upcoming reservation. All 
 | POST /api/bookings/:id/reschedules | Customer submits `start`, `end`, `reason` and the quoted `confirmedTotal` |
 | PATCH /api/bookings/:id/reschedules/:requestId | Staff approves or declines with a review note |
 | POST /api/bookings/:id/updates | Staff posts an update for a confirmed stay using multipart form data |
-| GET /api/bookings/updates | Customer reads their own updates, newest first, with optional before cursor |
+| GET /api/bookings/updates | Customer reads their own quick updates and daily reports, newest first, with an optional `before` cursor |
 | GET /api/bookings/updates/:id/photo | Booking owner fetches the private image |
 | GET /api/bookings/:id/care | Staff or owner reads the stay’s Bangkok calendar, including missing reports |
 | PATCH /api/bookings/:id/care/arrival or /pickup | Staff records actual arrival or pickup (`at` ISO timestamp; defaults to now). Pickup completes the stay. |
@@ -90,7 +90,7 @@ Pending reservations hold inventory for 15 minutes, then expire to CANCELLED if 
 
 Customers can request a new check-in and/or check-out for an upcoming confirmed stay. Quotes use the booked nightly rate and customers must confirm the new total. The original room and dates remain reserved while a request is pending. Approval rechecks that same physical room, ignores the booking’s own occupied nights, then updates dates, total and any simulated adjustment in one transaction. The booking reference stays the same. A conflict leaves the booking and request unchanged. Declining either type of change request requires a reason.
 
-Special-care instructions are optional plain text up to 2,000 characters. Staff updates accept a message of up to 2,000 characters, one JPEG, PNG, or WebP photo up to 2 MiB, or both. The feed returns `{updates, nextBefore}`. Each entry includes `id`, `bookingId`, `petName`, `message`, `createdAt`, and `hasPhoto`. Photo requests require the same customer bearer token as the feed. Photos are stored in PostgreSQL and served with caching disabled.
+Special-care instructions are optional plain text up to 2,000 characters. Staff updates accept a message of up to 2,000 characters, one JPEG, PNG, or WebP photo up to 2 MiB, or both. The feed returns `{updates, nextBefore}`. Pass `nextBefore` as the next request's `before` value. Each entry includes `id`, `kind` (`update` or `report`), `bookingId`, `petName`, `message`, `createdAt`, and `hasPhoto`. Daily reports also include `reportDate` and the first current `photoId`, which the client can load using the booking's care photo endpoint. Photo requests require the same customer bearer token as the feed. Photos are stored in PostgreSQL and served with caching disabled.
 
 Daily care is separate from the informal update feed. Daily reports require a description and at least one photo on first publication. Events have Bangkok local `time`, `careType`, `action`, `observation` and `status` (`PERFORMED` or `NOT_PERFORMED`). When care was not performed, `reason` and `followUp` are required. Staff corrections retain prior values, the editor and the edit time. Customer history stays available after pickup.
 

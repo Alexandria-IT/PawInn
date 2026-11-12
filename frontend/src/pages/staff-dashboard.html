@@ -196,15 +196,9 @@
                         @click="$dispatch('open-stay-care', booking)"
                       >
                         Stay care</button
-                      ><button
-                        x-show="booking.status==='CONFIRMED'"
-                        class="btn btn-outline btn-sm"
-                        @click="openUpdate(booking)"
-                      >
-                        Send pet update</button
                       ><span
                         class="muted text-xs"
-                        x-show="booking.status!=='CONFIRMED' && !hasPendingRequest(booking)"
+                        x-show="!['CONFIRMED','COMPLETED'].includes(booking.status) && !hasPendingRequest(booking)"
                         >No open actions</span
                       >
                     </td>
@@ -414,79 +408,6 @@
         </section>
       </div>
 
-      <div
-        class="modal-overlay"
-        x-show="updateTarget"
-        x-cloak
-        @click.self="closeUpdate()"
-        @keydown.escape.window="closeUpdate()"
-        x-trap.inert.noscroll="updateTarget"
-      >
-        <section
-          class="modal-panel"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="pet-update-title"
-        >
-          <div class="modal-title">
-            <div>
-              <p
-                class="eyebrow mb-2"
-                x-text="updateTarget?.petName+' · Booking #'+updateTarget?.id"
-              ></p>
-              <h2 id="pet-update-title">Care &amp; updates</h2>
-            </div>
-            <button
-              class="icon-btn shrink-0"
-              type="button"
-              @click="closeUpdate()"
-              aria-label="Close pet update"
-            >
-              ✕
-            </button>
-          </div>
-          <div class="notice mb-4">
-            <p class="font-semibold mb-1">Special-care instructions</p>
-            <p
-              class="whitespace-pre-wrap break-words"
-              x-text="updateTarget?.specialCare || 'No special care requested.'"
-            ></p>
-          </div>
-          <form @submit.prevent="submitUpdate()" class="space-y-4">
-            <p class="text-sm muted">
-              Send the customer a message, a photo, or both.
-            </p>
-            <label
-              >Message
-              <textarea
-                x-model="updateMessage"
-                rows="4"
-                maxlength="2000"
-                placeholder="How is their pet doing?"
-              ></textarea>
-            </label>
-            <label
-              >Photo <span class="muted">(optional, up to 2 MB)</span>
-              <input
-                type="file"
-                x-ref="updatePhoto"
-                accept="image/jpeg,image/png,image/webp"
-              />
-            </label>
-            <p
-              class="error"
-              x-show="updateError"
-              x-text="updateError"
-              role="alert"
-            ></p>
-            <button
-              class="btn btn-primary w-full"
-              :disabled="sendingUpdate"
-              x-text="sendingUpdate?'Sending…':'Send pet update'"
-            ></button>
-          </form>
-        </section>
-      </div>
     </main>
     <!-- include:footer -->
   </body>
