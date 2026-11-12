@@ -25,14 +25,16 @@ You'll need **Git** and **Docker Compose**. Start Docker Desktop on Windows or m
 
    Keep `PAWINN_SEED_DEMO=false` for regular use and keep `.env` out of Git.
 
-3. Build and start the app:
+   For demo `PAWINN_SEED_DEMO=true`, it has seed users provided with 2 customers account and 1 staff account 
+
+4. Build and start the app:
 
    ```sh
    docker compose up -d --build --wait
    docker compose ps
    ```
 
-4. Open [PawInn at localhost:8080](http://localhost:8080). On first startup, PawInn creates its database tables and adds **15 rooms** (five per room type).
+5. Open [PawInn at localhost:8080](http://localhost:8080). On first startup, PawInn creates its database tables and adds **15 rooms** (five per room type).
 
 ## Run inside the DevTools course container
 
