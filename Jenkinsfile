@@ -1,53 +1,46 @@
-// PawInn - CI/CD on your own machine
-//   CI: Checkout -> Install -> Build -> Test -> Service tests
-//   CD: Deploy (docker compose on this computer) -> Smoke test
-// After a green build the website is at http://localhost:8080
-// Jenkins checks GitHub every 2 minutes (a webhook cannot reach localhost).
+// PawInn CI/CD (Jenkins)
+//
+//   Checkout -> Frontend unit tests -> Build and verify -> Deploy tested images -> Smoke test
+//
+// - "Build and verify" runs scripts/verify.sh (the same check as GitHub Actions): builds every
+//   image tagged with this commit, starts a disposable stack, runs SQL + HTTP tests, removes it.
+// - "Deploy" starts exactly those tested images as project "pawinn" -> http://localhost:8080
+//   Settings come from the Jenkins credential "pawinn-env" (Secret file) when it exists,
+//   otherwise from a local demo env (.env.example + a generated JWT_SECRET kept in JENKINS_HOME).
+// - Triggers: GitHub webhook when Jenkins is reachable, otherwise polling every 2 minutes.
 
 pipeline {
     agent any
 
     triggers {
+        githubPush()
         pollSCM('H/2 * * * *')
     }
 
     options {
         timestamps()
         disableConcurrentBuilds()
-        timeout(time: 20, unit: 'MINUTES')
+        timeout(time: 30, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '20'))
-    }
-
-    environment {
-        COMPOSE_PROJECT_NAME = 'pawinn'   // fixed name, so each deploy replaces the previous one
-        APP_URL = 'http://host.docker.internal:8080'
     }
 
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
+                // Reuse the commit-tagged images from verification during deployment.
+                script { env.PAWINN_TAG = sh(returnStdout: true, script: 'git rev-parse --short=12 HEAD').trim() }
                 sh 'git log -1 --pretty="Commit %h by %an: %s"'
                 sh 'node --version && docker --version && docker compose version'
             }
         }
 
-        stage('Install') {
-            steps {
-                dir('frontend') { sh 'npm ci --no-audit --no-fund' }
-            }
-        }
-
-        stage('Build') {
-            steps {
-                dir('frontend') { sh 'npm run build' }
-            }
-        }
-
-        stage('Test') {
+        stage('Frontend unit tests') {
             steps {
                 dir('frontend') {
                     sh '''
+                        npm ci --no-audit --no-fund
+                        npm run build
                         mkdir -p test-results
                         node --test \
                           --test-reporter=spec  --test-reporter-destination=stdout \
@@ -58,45 +51,54 @@ pipeline {
             }
         }
 
-        stage('Service tests') {
-            steps {
-                sh '''
-                    for svc in account room booking; do
-                        dir=services/$svc
-                        if ls $dir/tests/*.test.js >/dev/null 2>&1; then
-                            echo "== $svc"
-                            (cd $dir && npm ci --no-audit --no-fund && npm test)
-                        else
-                            echo "== $svc: no tests yet, skipped"
-                        fi
-                    done
-                '''
-            }
+        stage('Build and verify') {
+            steps { sh 'sh scripts/verify.sh' }
         }
 
-        stage('Deploy') {
+        stage('Deploy tested images') {
+            // Multibranch jobs: only main deploys. Single pipeline job: deploys the branch it builds.
+            when { expression { env.BRANCH_NAME == null || env.BRANCH_NAME == 'main' } }
             steps {
-                // Local demo only: uses the demo password from .env.example.
-                // The database volume is kept between deploys (no "down -v").
+                script {
+                    try {
+                        withCredentials([file(credentialsId: 'pawinn-env', variable: 'DEPLOY_ENV')]) {
+                            sh 'cp "$DEPLOY_ENV" deploy.env && chmod 600 deploy.env'
+                        }
+                        echo 'Using settings from the pawinn-env credential'
+                    } catch (err) {
+                        echo 'No pawinn-env credential: using the local demo env (.env.example + generated JWT_SECRET)'
+                        sh '''
+                            set -eu
+                            LOCAL_ENV="$JENKINS_HOME/pawinn-local.env"
+                            if [ ! -f "$LOCAL_ENV" ]; then
+                                SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+                                sed "s/^JWT_SECRET=.*/JWT_SECRET=$SECRET/" .env.example > "$LOCAL_ENV"
+                                chmod 600 "$LOCAL_ENV"
+                            fi
+                            cp "$LOCAL_ENV" deploy.env
+                        '''
+                    }
+                }
                 sh '''
                     set -eu
-                    [ -f .env ] || cp .env.example .env
-                    docker compose build
-                    docker compose up -d --remove-orphans --wait --wait-timeout 180
-                    docker compose ps
+                    docker compose --env-file deploy.env -p pawinn up -d --no-build --wait --remove-orphans
+                    docker compose --env-file deploy.env -p pawinn ps
                 '''
             }
         }
 
         stage('Smoke test') {
+            when { expression { env.BRANCH_NAME == null || env.BRANCH_NAME == 'main' } }
             steps {
+                // Checked from inside the "pawinn" network, so it works whether Jenkins
+                // runs on the host or in a container.
                 sh '''
                     set -eu
-                    curl -fsS -o /dev/null --retry 10 --retry-delay 3 --retry-all-errors \
-                         -w "website $APP_URL -> %{http_code}\\n" "$APP_URL/"
-                    ROOMS=$(docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atqc "SELECT count(*) FROM rooms"')
-                    echo "database -> $ROOMS rooms"
-                    [ "$ROOMS" -gt 0 ]
+                    for path in /pages/rooms.html /api/room-types; do
+                        docker run --rm --network pawinn_default curlimages/curl:latest \
+                            -fsS -o /dev/null --retry 10 --retry-delay 3 --retry-all-errors \
+                            -w "http://frontend$path -> %{http_code}\\n" "http://frontend$path"
+                    done
                 '''
             }
         }
@@ -107,10 +109,13 @@ pipeline {
             junit allowEmptyResults: true, testResults: 'frontend/test-results/*.xml'
         }
         success {
-            echo 'Deployed ✓  Open http://localhost:8080'
+            echo 'PawInn is running at http://localhost:8080'
         }
         failure {
-            sh 'docker compose logs --no-color --tail=100 || true'
+            sh '[ -f deploy.env ] && docker compose --env-file deploy.env -p pawinn logs --no-color --tail=100 || true'
+        }
+        cleanup {
+            sh 'rm -f deploy.env'
         }
     }
 }

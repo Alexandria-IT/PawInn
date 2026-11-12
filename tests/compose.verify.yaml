@@ -1,0 +1,13 @@
+services:
+  verify:
+    # tests are copied into a small image instead of bind-mounted (works from a Jenkins container too)
+    image: ${PAWINN_IMAGE_PREFIX:-pawinn}-verify:${PAWINN_TAG:-local}
+    build:
+      context: ./tests
+      dockerfile_inline: |
+        FROM node:24-alpine
+        COPY . /tests
+    environment:
+      BASE_URL: http://frontend
+      PAWINN_TEST: "1"
+    command: ["node", "/tests/smoke.mjs"]
