@@ -58,6 +58,7 @@ export default (isStaff) => ({
   careError: "",
   careRequestNumber: 0,
   careWriting: false,
+  careRefreshPending: false,
   careForm: null,
   careFormTrigger: null,
   careFormError: "",
@@ -90,6 +91,7 @@ export default (isStaff) => ({
     this.careBooking = null;
     this.careData = null;
     this.careLoading = false;
+    this.careRefreshPending = false;
     this.careError = "";
     this.careForm = null;
     this.careFormTrigger = null;
@@ -138,21 +140,42 @@ export default (isStaff) => ({
     if (this.careBooking && !this.careWriting) this.resetCare();
   },
 
+  // Queue a live change while an editor is open, so it cannot disturb the form.
+  refreshCareFromEvent({ bookingId, area }) {
+    if (!this.careBooking || (bookingId && bookingId !== this.careBooking.id) || area === "update") return;
+    if (this.careForm || this.careLoading) {
+      this.careRefreshPending = true;
+      return;
+    }
+    this.loadCare(true);
+  },
+
   // Fetch only the currently selected booking's history.
-  async loadCare() {
+  async loadCare(quiet = false) {
     if (!this.careBooking) return;
     const requestNumber = ++this.careRequestNumber;
-    this.careLoading = true;
-    this.careError = "";
+    this.careRefreshPending = false;
+    if (!quiet) {
+      this.careLoading = true;
+      this.careError = "";
+    }
     try {
       const data = await readStayCare(this.careBooking.id);
       if (requestNumber === this.careRequestNumber) {
-        this.careData = { ...data, days: chronologicalDays(data.days) };
+        if (quiet && this.careForm) {
+          this.careRefreshPending = true;
+        } else {
+          this.careData = { ...data, days: chronologicalDays(data.days) };
+          this.careError = "";
+        }
       }
     } catch (error) {
-      if (requestNumber === this.careRequestNumber) this.careError = error.message;
+      if (!quiet && requestNumber === this.careRequestNumber) this.careError = error.message;
     } finally {
-      if (requestNumber === this.careRequestNumber) this.careLoading = false;
+      if (requestNumber === this.careRequestNumber) {
+        this.careLoading = false;
+        if (this.careRefreshPending && !this.careForm) this.loadCare(true);
+      }
     }
   },
 
@@ -186,6 +209,7 @@ export default (isStaff) => ({
     this.careForm = null;
     this.careFormTrigger = null;
     this.careFormError = "";
+    if (this.careRefreshPending) this.loadCare(true);
     this.$nextTick(() => {
       const target = trigger?.getClientRects().length && !trigger.disabled
         ? trigger

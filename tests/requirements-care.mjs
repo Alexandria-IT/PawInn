@@ -1,8 +1,38 @@
 import assert from "node:assert/strict";
+import { setTimeout as delay } from "node:timers/promises";
 
 const bangkokDate = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit",
 });
+
+// Read the next change from an authenticated browser-equivalent event stream.
+async function openLiveFeed(origin, token) {
+  const controller = new AbortController();
+  const response = await fetch(origin + "/api/bookings/live", {
+    headers: { Authorization: "Bearer " + token },
+    signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]),
+  });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /^text\/event-stream/);
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  async function nextChange() {
+    while (true) {
+      const boundary = buffer.indexOf("\n\n");
+      if (boundary >= 0) {
+        const message = buffer.slice(0, boundary);
+        buffer = buffer.slice(boundary + 2);
+        if (message.startsWith("data: ")) return JSON.parse(message.slice(6));
+      } else {
+        const { done, value } = await reader.read();
+        if (done) throw new Error("Live booking stream closed before a change arrived.");
+        buffer += value;
+      }
+    }
+  }
+  assert.deepEqual(await nextChange(), { area: "sync" });
+  return { nextChange, close: () => controller.abort() };
+}
 
 // Verify actual stay dates, daily records, privacy, and correction history.
 export async function verifyCare({ request, staff, customer, foreign, booking, origin }) {
@@ -68,7 +98,21 @@ export async function verifyCare({ request, staff, customer, foreign, booking, o
   await report(arrivalDay, null, png, "image/png", 400);
   await report(arrivalDay, "Invalid image", Buffer.from("not an image"), "image/png", 400);
   await report(calendarDate(4), "Before arrival", png, "image/png", 409);
-  const originalReport = await report(arrivalDay, "Ate dinner normally.", png, "image/png", 201);
+  const livePath = "/api/bookings/live";
+  await request(livePath, "GET", null, null, 401);
+  const feeds = await Promise.all([customerToken, staffToken, foreignToken]
+    .map((token) => openLiveFeed(origin, token)));
+  let originalReport;
+  try {
+    originalReport = await report(arrivalDay, "Ate dinner normally.", png, "image/png", 201);
+    const [owner, staff, other] = feeds;
+    const change = { bookingId: booking.id, area: "report" };
+    assert.deepEqual(await owner.nextChange(), change);
+    assert.deepEqual(await staff.nextChange(), change);
+    assert.equal(await Promise.race([other.nextChange(), delay(500, null)]), null);
+  } finally {
+    for (const feed of feeds) feed.close();
+  }
   const originalPhoto = originalReport.photos[0].id;
   const feedPath = "/api/bookings/updates";
   const reportFeedId = "report:" + originalReport.id;

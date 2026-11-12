@@ -8,6 +8,8 @@ export default () => ({
   nextBefore: null,
   loaded: false,
   loading: false,
+  refreshing: false,
+  refreshPending: false,
   error: "",
   requestNumber: 0,
   // Load once per customer session and discard data on sign-out.
@@ -25,12 +27,14 @@ export default () => ({
     this.nextBefore = null;
     this.loaded = false;
     this.loading = false;
+    this.refreshing = false;
+    this.refreshPending = false;
     this.error = "";
     if (this.$store.portal.user?.role === "CUSTOMER") this.load();
   },
   // Fetch one page of the current customer's private feed.
   async load(before = null) {
-    if (this.loading || this.$store.portal.user?.role !== "CUSTOMER") return;
+    if (this.loading || this.refreshing || this.$store.portal.user?.role !== "CUSTOMER") return;
     this.loading = true;
     this.error = "";
     const requestNumber = ++this.requestNumber;
@@ -43,7 +47,47 @@ export default () => ({
     } catch (error) {
       if (requestNumber === this.requestNumber) this.error = error.message;
     } finally {
-      if (requestNumber === this.requestNumber) this.loading = false;
+      if (requestNumber === this.requestNumber) {
+        this.loading = false;
+        if (this.refreshPending) this.refreshFeed();
+      }
+    }
+  },
+  // Refresh the visible feed in place when a report or update is published.
+  refreshFromEvent({ area }) {
+    if (["update", "report", "sync"].includes(area)) this.refreshFeed();
+  },
+  // Keep older pages the customer already loaded when refreshing the newest items.
+  async refreshFeed() {
+    if (this.$store.portal.user?.role !== "CUSTOMER") return;
+    if (this.loading || this.refreshing) {
+      this.refreshPending = true;
+      return;
+    }
+    this.refreshPending = false;
+    this.refreshing = true;
+    const requestNumber = ++this.requestNumber;
+    const oldest = this.items.at(-1)?.id;
+    const updates = [];
+    let nextBefore = null;
+    try {
+      do {
+        const page = await listPetUpdates(nextBefore);
+        if (requestNumber !== this.requestNumber) return;
+        updates.push(...page.updates);
+        nextBefore = page.nextBefore;
+      } while (oldest && nextBefore && !updates.some(({ id }) => id === oldest));
+      this.items = updates;
+      this.nextBefore = nextBefore;
+      this.loaded = true;
+      this.error = "";
+    } catch {
+      // Keep the existing feed visible until the next update or manual refresh.
+    } finally {
+      if (requestNumber === this.requestNumber) {
+        this.refreshing = false;
+        if (this.refreshPending) this.refreshFeed();
+      }
     }
   },
   reportDateLabel: dateLabel,

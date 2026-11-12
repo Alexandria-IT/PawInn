@@ -10,6 +10,7 @@ import {
 } from "../shared/runtime.js";
 import { registerUpdateRoutes } from "./updates.js";
 import { registerCareRoutes } from "./care.js";
+import { registerBookingEvents } from "./live.js";
 
 const showFixtures = /^(1|true)$/i.test(process.env.PAWINN_SEED_DEMO || "");
 const visibleCustomer = showFixtures
@@ -173,6 +174,7 @@ function reviewNote(notes, decision) {
 // Register availability, booking, checkout, and request review routes.
 export function routes(router, pool, auth) {
   // Register the inbox before the generic booking detail route.
+  registerBookingEvents(router, pool, auth);
   registerUpdateRoutes(router, pool, auth, { getBooking: get, log });
   registerCareRoutes(router, pool, auth, { getBooking: get, log });
   // Expire holds under the shared inventory lock.

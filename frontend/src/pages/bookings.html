@@ -168,6 +168,7 @@
           aria-modal="true"
           aria-labelledby="booking-title"
           x-data="stayCare(false)"
+          @pawinn:booking-change.window="refreshCareFromEvent($event.detail)"
         >
           <div class="modal-title">
             <div>

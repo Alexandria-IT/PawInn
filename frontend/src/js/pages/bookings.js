@@ -17,6 +17,11 @@ export default () => ({
   busy: false,
   // Open the requested history tab or the booking linked from Pet Updates.
   init() {
+    this.$watch("$store.portal.bookings", (bookings) => {
+      if (this.detail) {
+        this.detail = bookings.find(({ id }) => id === this.detail.id) ?? null;
+      }
+    });
     const params = new URLSearchParams(location.search);
     if (params.get("tab") === "history") this.tab = "history";
     const bookingId = params.get("careBooking");

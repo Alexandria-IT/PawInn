@@ -10,7 +10,8 @@
   </head>
   <body x-data="shell" data-page="pet-updates">
     <!-- include:header -->
-    <main id="main" class="wrap" x-data="petUpdates">
+    <main id="main" class="wrap" x-data="petUpdates"
+      @pawinn:booking-change.window="refreshFromEvent($event.detail)">
       <div class="page-intro flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1>Pet Updates</h1>

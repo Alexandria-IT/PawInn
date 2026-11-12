@@ -14,6 +14,7 @@ import staff from "./pages/staff-dashboard.js";
 import admin from "./pages/admin.js";
 import stayCare, { stayCarePhoto } from "./pages/stay-care.js";
 import petUpdates, { petUpdatePhoto } from "./pages/pet-updates.js";
+import { startLiveBookingUpdates } from "./api/live-bookings.js";
 Alpine.plugin(focus);
 Alpine.store("portal", portal());
 Alpine.store("ui", ui());
@@ -35,6 +36,22 @@ for (const [name, component] of Object.entries({
   Alpine.data(name, component);
 installAlerts(Alpine);
 Alpine.start();
+
+const liveBookingPages = ["bookings", "checkout", "staff-dashboard", "pet-updates"];
+const page = document.body.dataset.page;
+if (liveBookingPages.includes(page)) {
+  let refreshTimer;
+  startLiveBookingUpdates(
+    (change) => {
+      window.dispatchEvent(new CustomEvent("pawinn:booking-change", { detail: change }));
+      if (page !== "pet-updates" && ["booking", "sync"].includes(change.area)) {
+        clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(() => Alpine.store("portal").refresh(), 75);
+      }
+    },
+    () => Alpine.store("portal").refresh(),
+  );
+}
 
 window.addEventListener(
   "pageshow",

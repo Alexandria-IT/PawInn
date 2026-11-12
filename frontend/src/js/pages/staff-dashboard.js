@@ -26,6 +26,14 @@ export default () => ({
   types: [],
   inventoryError: "",
   inventoryLoading: false,
+  // Keep the open details current without replacing an in-progress review.
+  init() {
+    this.$watch("$store.portal.bookings", (bookings) => {
+      if (this.detail && !this.detailLoading) {
+        this.detail = bookings.find(({ id }) => id === this.detail.id) ?? null;
+      }
+    });
+  },
   // Read bookings available to a staff session.
   get all() {
     return this.$store.portal.user?.role === "STAFF"

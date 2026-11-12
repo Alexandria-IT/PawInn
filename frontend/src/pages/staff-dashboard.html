@@ -373,6 +373,7 @@
 
       <div class="modal-overlay" x-data="stayCare(true)" x-show="careBooking" x-cloak
         @open-stay-care.window="openStaffCare($event.detail)"
+        @pawinn:booking-change.window="refreshCareFromEvent($event.detail)"
         @click.self="closeStaffCare()" @keydown.escape.window="closeStaffCare()" x-trap.inert.noscroll="careBooking">
         <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="staff-stay-care-title">
           <!-- include:staff-care-controls -->

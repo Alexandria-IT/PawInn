@@ -5,6 +5,7 @@ import pg from "pg";
 import jwt from "jsonwebtoken";
 import { runService, transaction } from "../shared/runtime.js";
 import { routes } from "./routes.js";
+import { stopBookingEvents } from "./live.js";
 const startupConnectionErrors = new Set([
   "ECONNREFUSED",
   "ECONNRESET",
@@ -29,6 +30,7 @@ async function prepare(pool) {
     "utf8",
   );
   const careSchema = await readFile(new URL("./care-schema.sql", import.meta.url), "utf8");
+  const liveSchema = await readFile(new URL("./live-schema.sql", import.meta.url), "utf8");
   // Docker can restart Booking and PostgreSQL at the same time.
   for (let attempt = 1; ; attempt++) {
     try {
@@ -40,6 +42,7 @@ async function prepare(pool) {
           await db.query(rescheduleSchema);
           await db.query(updateSchema);
           await db.query(careSchema);
+          await db.query(liveSchema);
         },
       );
       return;
@@ -53,6 +56,9 @@ async function prepare(pool) {
     }
   }
 }
+
+process.once("SIGTERM", stopBookingEvents);
+process.once("SIGINT", stopBookingEvents);
 
 await runService(import.meta.url, {
   prepare,
