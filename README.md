@@ -34,6 +34,45 @@ You'll need **Git** and **Docker Compose**. Start Docker Desktop on Windows or m
 
 4. Open [PawInn at localhost:8080](http://localhost:8080). On first startup, PawInn creates its database tables and adds **15 rooms** (five per room type).
 
+## Run inside the DevTools course container
+
+The course image runs its own Docker engine. Use SSH port forwarding to open PawInn in your computer’s browser. [DevTools course image](https://github.com/Tuchsanai/DevTools/blob/main/00_Tool/00_Reference/readme.md)
+
+**On your computer**, start the course container with Docker Desktop running:
+
+```powershell
+docker run -dit --name devtools --privileged -p 127.0.0.1:2222:22 tuchsanai/devtools:2569_1
+ssh -o ExitOnForwardFailure=yes -p 2222 -L 127.0.0.1:8082:127.0.0.1:8080 root@127.0.0.1
+```
+
+If you already created `devtools` with SSH mapped to port `2222`, skip `docker run`. If the container is stopped, run `docker start devtools` before connecting. Use the SSH password from the course guide.
+
+**Inside the SSH session**, clone PawInn and create its local settings:
+
+```sh
+docker info --format '{{.ServerVersion}}'
+cd /workspace
+git clone https://github.com/Alexandria-IT/PawInn.git
+cd PawInn
+
+if [ ! -f .env ]; then
+  cp .env.example .env
+  db_password="$(node -p "require('node:crypto').randomBytes(24).toString('hex')")"
+  jwt_secret="$(node -p "require('node:crypto').randomBytes(32).toString('hex')")"
+  sed -i -e "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$db_password/" \
+    -e "s/^JWT_SECRET=.*/JWT_SECRET=$jwt_secret/" .env
+  unset db_password jwt_secret
+fi
+
+docker compose up -d --build --wait
+docker compose ps
+curl -fsS http://127.0.0.1:8080/api/room-types
+```
+
+If PawInn is already cloned, enter that directory and run the setup from there. The SSH command forwards to PawInn’s default `FRONTEND_PORT=8080` inside the course container. If you changed that value, use the same port in the last part of `-L` and in the `curl` URL.
+
+Keep the SSH session open and visit [PawInn at 127.0.0.1:8082](http://127.0.0.1:8082) in your computer’s browser. If `8082` is busy, change the first port in `-L` and use that port in the browser. If `curl` fails inside the course container, run `docker compose ps -a` and `docker compose logs --tail=100` there to check startup.
+
 ## Set up Admin and Staff access
 
 The customer flow works without an Admin account. To try the staff dashboard, first create one Admin for your database. Use an unused email address and a password of at least 12 characters (up to 72 bytes). Replace `admin@example.com` with your email.
