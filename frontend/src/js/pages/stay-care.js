@@ -23,6 +23,7 @@ const dateTimeFormat = new Intl.DateTimeFormat("en-GB", {
   dateStyle: "medium",
   timeStyle: "short",
 });
+const careTypes = ["Feeding", "Medication", "Exercise", "Grooming", "Health check", "Other"];
 const photoLimit = 2 * 1024 * 1024;
 const photoTypes = ["image/jpeg", "image/png", "image/webp"];
 
@@ -68,6 +69,27 @@ export default (isStaff) => ({
   quickUpdateMessage: "",
   eventDate: "",
   careEvent: null,
+  legacyCareType: "",
+
+  // Preserve an older free-text category when editing an existing entry.
+  get careTypeOptions() {
+    return this.legacyCareType ? [...careTypes, this.legacyCareType] : careTypes;
+  },
+
+  // Bound the form to scheduled Bangkok dates and actual time up to now.
+  attendanceBounds(kind) {
+    const now = bangkokInput();
+    const start = this.careBooking?.start;
+    const end = this.careBooking?.end;
+    if (!start || !end) return { min: "", max: "", available: false };
+    const first = start + "T00:00";
+    const arrived = this.careData?.arrivedAt;
+    const arrival = kind === "pickup" && arrived ? bangkokInput(arrived) : first;
+    const min = arrival > first ? arrival : first;
+    const last = end + "T23:59";
+    const max = now < last ? now : last;
+    return { min, max, available: min <= max };
+  },
 
   // Clear booking-specific state when the modal or session changes.
   init() {
@@ -220,7 +242,10 @@ export default (isStaff) => ({
 
   // Start entering an actual arrival or pickup time.
   openAttendance(kind) {
-    this.attendanceTime = bangkokInput();
+    const now = bangkokInput();
+    const { min, max, available } = this.attendanceBounds(kind);
+    if (!available) return;
+    this.attendanceTime = now >= min && now <= max ? now : "";
     this.showCareForm(kind);
   },
 
@@ -241,6 +266,9 @@ export default (isStaff) => ({
   // Open a blank event or copy the previous entry into the editor.
   openCareEvent(date = this.latestCareDay, event = null) {
     this.eventDate = date;
+    this.legacyCareType = event?.careType && !careTypes.includes(event.careType)
+      ? event.careType
+      : "";
     const now = bangkokInput();
     this.careEvent = event
       ? { ...event, time: event.time.slice(0, 5) }

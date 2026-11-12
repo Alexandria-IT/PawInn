@@ -198,6 +198,13 @@
                       ></option
                     ></template></select
                 ></label>
+                <template x-if="!$store.portal.user?.phone?.trim()">
+                  <label>
+                    Phone number
+                    <input type="tel" x-model="phone" autocomplete="tel" maxlength="30" required />
+                    <span class="text-xs muted">Hotel staff use this number to reach you in an emergency.</span>
+                  </label>
+                </template>
                 <label
                   >Special-care instructions
                   <span class="muted">(optional)</span>
@@ -209,7 +216,7 @@
                   ></textarea>
                 </label>
                 <p class="text-xs muted">
-                  Your room will be held for 15 minutes while you complete
+                  Your room will be held for 2 minutes while you complete
                   simulated checkout.
                 </p>
                 <p

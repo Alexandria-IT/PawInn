@@ -88,6 +88,7 @@ export async function verifyCare({ request, staff, customer, foreign, booking, o
   await request(path, "GET", null, foreignToken, 404);
   await request(`${path}/arrival`, "PATCH", { at: arrival }, customerToken, 403);
   await request(`${path}/pickup`, "PATCH", { at: pickup }, staffToken, 409);
+  await request(path + "/arrival", "PATCH", { at: calendarDate(4) + "T23:59:00+07:00" }, staffToken, 409);
   assert.equal(
     (await request(`${path}/arrival`, "PATCH", { at: arrival }, staffToken)).arrivedAt,
     new Date(arrival).toISOString(),
@@ -157,6 +158,7 @@ export async function verifyCare({ request, staff, customer, foreign, booking, o
 
   await request(`${path}/days/${middleDay}/events`, "POST", firstEvent, staffToken, 201);
   await request(`${path}/pickup`, "PATCH", { at: arrival }, staffToken, 409);
+  await request(path + "/pickup", "PATCH", { at: calendarDate(0) + "T00:00:00+07:00" }, staffToken, 409);
   const checkout = await request(`${path}/pickup`, "PATCH", { at: pickup }, staffToken);
   assert.equal(checkout.status, "COMPLETED");
   assert.equal(checkout.pickedUpAt, new Date(pickup).toISOString());

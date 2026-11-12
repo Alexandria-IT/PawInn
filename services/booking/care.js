@@ -238,6 +238,9 @@ async function saveAttendance(db, booking, actor, kind, at, supplied, log) {
   }
   if (status !== "CONFIRMED")
     fail(409, "Attendance can only be recorded for confirmed bookings.");
+  const date = localCareDate(at);
+  if (date < booking.start || date > booking.end)
+    fail(409, "Record arrival or pickup on a date within the scheduled stay (Bangkok time).");
   if (!pickup) {
     await db.query("UPDATE bookings SET arrived_at=$2 WHERE booking_id=$1", [
       bookingId,
@@ -259,7 +262,7 @@ async function saveAttendance(db, booking, actor, kind, at, supplied, log) {
     `SELECT EXISTS (SELECT 1 FROM booking_care_reports WHERE booking_id=$1 AND care_date>$2
                     UNION ALL
                     SELECT 1 FROM booking_care_events WHERE booking_id=$1 AND care_date>$2) AS "hasLaterCare"`,
-    [bookingId, localCareDate(at)],
+    [bookingId, date],
   );
   if (hasLaterCare)
     fail(409, "The pickup date cannot precede an existing care record.");

@@ -85,6 +85,9 @@ export function text(value, max, optional = false) {
   return value.trim();
 }
 
+// Keep Booking and Room on the same unpaid hold duration.
+export const holdMinutes = 2;
+
 // Run an operation under the shared inventory lock.
 export async function transaction(pool, fn) {
   const db = await pool.connect();
@@ -168,7 +171,7 @@ export function createService({ express, jwt, pool, secret, routes, tables }) {
       const {
         rows: [user],
       } = await pool.query(
-        "SELECT user_id, role, email, account_status, session_version FROM users WHERE user_id=$1",
+        "SELECT user_id, role, email, phone, account_status, session_version FROM users WHERE user_id=$1",
         [sub],
       );
       if (
@@ -212,7 +215,7 @@ export function createService({ express, jwt, pool, secret, routes, tables }) {
         return res.status(413).json({ message: "Request is too large." });
       if (["23P01", "23505", "23503"].includes(error.code))
         return res.status(409).json({
-          message: "The booking or inventory changed. Refresh and try again.",
+          message: "This request conflicts with an existing booking or the room is no longer available. Check My bookings or choose different dates or a different room.",
         });
       console.error("Service request failed:", error.code || error.name);
       res.status(500).json({ message: "The request could not be completed." });

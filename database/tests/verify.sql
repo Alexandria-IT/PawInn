@@ -105,4 +105,13 @@ BEGIN
 END $$;
 
 ROLLBACK;
+
+-- Historical stay for attendance tests. The disposable API suite records actual times.
+WITH hotel AS (SELECT (now() AT TIME ZONE 'Asia/Bangkok')::date AS day)
+INSERT INTO bookings (booking_id, user_id, pet_id, room_id, check_in_date, check_out_date,
+    nightly_rate, total_price, status, created_at, payment_status, payment_reference, paid_at)
+SELECT 3999, 1001, 2001, 101, day - 3, day - 1, 650, 1300, 'CONFIRMED',
+    now() - interval '5 days', 'SUCCESS', 'TEST-CARE-3999', now() - interval '5 days'
+FROM hotel;
+
 \echo 'PASS: schema, mock data, bcrypt, joins, PK/FK ownership, prices, refunds, overlapping/adjacent stays and pending cancellation uniqueness.'

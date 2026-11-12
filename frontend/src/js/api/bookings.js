@@ -11,6 +11,9 @@ export const reserve = (petId, roomTypeId, start, end, specialCare) =>
 // Update the pet, room, dates, and notes on a held reservation.
 export const editHold = (id, details) =>
   call("bookings/" + encodeURIComponent(id) + "/hold", "PATCH", details);
+// Cancel an unpaid reservation and release its room.
+export const cancelHold = (id) =>
+  call("bookings/" + encodeURIComponent(id) + "/hold", "DELETE");
 // Fetch booking details for the current customer or staff member.
 export const getBooking = (id) => call("bookings/" + encodeURIComponent(id));
 // Quote a proposed date change before the customer agrees to it.

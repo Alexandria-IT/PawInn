@@ -37,14 +37,18 @@ for (const [name, component] of Object.entries({
 installAlerts(Alpine);
 Alpine.start();
 
-const liveBookingPages = ["bookings", "checkout", "staff-dashboard", "pet-updates"];
+const bookingHistoryPages = ["bookings", "checkout", "staff-dashboard"];
 const page = document.body.dataset.page;
-if (liveBookingPages.includes(page)) {
+{
+  const portalStore = Alpine.store("portal");
   let refreshTimer;
   startLiveBookingUpdates(
     (change) => {
       window.dispatchEvent(new CustomEvent("pawinn:booking-change", { detail: change }));
-      if (page !== "pet-updates" && ["booking", "sync"].includes(change.area)) {
+      if (page !== "pet-updates" && ["update", "report", "sync"].includes(change.area))
+        portalStore.refreshPetUpdates();
+      if (page !== "pet-updates" && bookingHistoryPages.includes(page) &&
+          ["booking", "sync"].includes(change.area)) {
         clearTimeout(refreshTimer);
         refreshTimer = setTimeout(() => Alpine.store("portal").refresh(), 75);
       }
@@ -53,6 +57,11 @@ if (liveBookingPages.includes(page)) {
   );
 }
 
+window.addEventListener("storage", (event) => {
+  const store = Alpine.store("portal");
+  if (event.key === store.petUpdateKey || event.key === null)
+    store.syncSeenPetUpdates();
+});
 window.addEventListener(
   "pageshow",
   /* Refresh the session when browser history restores a page. */ (event) => {

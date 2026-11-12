@@ -115,7 +115,7 @@
                   ></span>
                 </div>
                 <button type="button" x-ref="editBookingButton" class="btn btn-outline btn-sm mb-5"
-                  x-show="!editing" :disabled="busy || !seconds" @click="openEditor()">
+                  x-show="!editing" :disabled="busy || cancelling || !seconds" @click="openEditor()">
                   Edit booking details
                 </button>
                 <template x-if="editing">
@@ -145,7 +145,7 @@
                     <p class="error" x-show="editError" x-text="editError" role="alert"></p>
                     <div class="flex flex-wrap gap-3">
                       <button type="button" class="btn btn-outline" :disabled="busy" @click="editing=null; $nextTick(()=>$refs.editBookingButton.focus())">Keep original details</button>
-                      <button class="btn btn-primary" :disabled="busy || !seconds || !editRoomTypes.length">Save and review</button>
+                      <button class="btn btn-primary" :disabled="busy || cancelling || !seconds || !editRoomTypes.length">Save and review</button>
                     </div>
                   </form>
                 </template>
@@ -161,8 +161,7 @@
                       All the experience. None of the charge.
                     </p>
                     <p class="text-xs muted mt-2 max-w-sm">
-                      No card details needed. Choose a result below to explore
-                      the checkout flow.
+                      No card details needed. Confirm your stay or cancel the reservation.
                     </p>
                   </div>
                   <span class="text-4xl text-[#8b7396]" aria-hidden="true"
@@ -170,44 +169,6 @@
                   >
                 </div>
                 <form @submit.prevent="submit()" class="mt-6 space-y-5">
-                  <fieldset>
-                    <legend class="font-semibold text-sm mb-3">
-                      Simulate a payment result
-                    </legend>
-                    <div class="grid sm:grid-cols-2 gap-3">
-                      <label
-                        class="flex gap-3 items-start border rounded-xl p-4 cursor-pointer"
-                        :class="result==='success'?'border-clay bg-orange-50/40':'border-stone-200'"
-                        ><input
-                          type="radio"
-                          name="result"
-                          value="success"
-                          x-model="result"
-                          class="mt-1 shrink-0"
-                        /><span
-                          ><span class="block text-sm">Successful payment</span
-                          ><span class="text-[11px] muted font-normal"
-                            >Confirm this little getaway</span
-                          ></span
-                        ></label
-                      ><label
-                        class="flex gap-3 items-start border rounded-xl p-4 cursor-pointer"
-                        :class="result==='failed'?'border-clay bg-orange-50/40':'border-stone-200'"
-                        ><input
-                          type="radio"
-                          name="result"
-                          value="failed"
-                          x-model="result"
-                          class="mt-1 shrink-0"
-                        /><span
-                          ><span class="block text-sm">Declined payment</span
-                          ><span class="text-[11px] muted font-normal"
-                            >Try the retry experience</span
-                          ></span
-                        ></label
-                      >
-                    </div>
-                  </fieldset>
                   <label class="flex gap-3 items-start font-normal"
                     ><input
                       type="checkbox"
@@ -226,9 +187,12 @@
                   ></p>
                   <button
                     class="btn btn-primary w-full"
-                    :disabled="busy || !seconds"
+                    :disabled="busy || cancelling || !seconds"
                     x-text="busy?'Making it official…':'Simulate payment · '+money(booking.total)+' →'"
                   ></button>
+                  <button type="button" class="btn btn-outline w-full"
+                    :disabled="busy || cancelling" @click="cancelReservation()"
+                    x-text="cancelling ? 'Cancelling…' : 'Cancel booking'"></button>
                   <p class="text-[10px] muted text-center">
                     Prices in Thai baht. No money is collected.
                   </p>

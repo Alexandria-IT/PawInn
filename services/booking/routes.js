@@ -7,6 +7,7 @@ import {
   today,
   stay,
   text,
+  holdMinutes,
 } from "../shared/runtime.js";
 import { registerUpdateRoutes } from "./updates.js";
 import { registerCareRoutes } from "./care.js";
@@ -35,6 +36,7 @@ const selection = `
     t.species,
     p.name AS "petName",
     u.full_name AS "customerName",
+    u.phone AS "customerPhone",
     b.check_in_date::text AS start,
     b.check_out_date::text AS end,
     b.nightly_rate::float8 AS "nightlyRate",
@@ -47,7 +49,7 @@ const selection = `
     b.payment_status AS "paymentStatus",
     b.refund_status AS "refundStatus",
     b.refund_amount::float8 AS "refundAmount",
-    extract(epoch FROM (b.created_at + interval '15 minutes'))::float8 * 1000 AS "expiresAt",
+    extract(epoch FROM (b.created_at + interval '${holdMinutes} minutes'))::float8 * 1000 AS "expiresAt",
     c.item AS cancellation,
     changes.item AS reschedule,
     (
@@ -98,7 +100,7 @@ async function expire(db) {
   await db.query(`WITH expired AS (
     UPDATE bookings
     SET status = 'CANCELLED'
-    WHERE status = 'PENDING' AND created_at <= now() - interval '15 minutes'
+    WHERE status = 'PENDING' AND created_at <= now() - interval '${holdMinutes} minutes'
     RETURNING booking_id
   )
   INSERT INTO booking_logs (booking_id, action, details)
@@ -143,6 +145,18 @@ async function availableRoom(
     [roomTypeId, start, end, bookingId, preferredRoomId],
   );
   return room;
+}
+
+// Check the pet's dates before assigning a room so the owner can resolve an overlap.
+async function requireNoPetOverlap(db, petId, start, end, excludedBooking = null) {
+  const { rowCount } = await db.query(
+    `SELECT 1 FROM bookings WHERE pet_id=$1 AND status IN ('PENDING','CONFIRMED')
+      AND check_in_date<$3::date AND check_out_date>$2::date
+      AND ($4::int IS NULL OR booking_id<>$4) LIMIT 1`,
+    [petId, start, end, excludedBooking],
+  );
+  if (rowCount)
+    fail(409, "This pet already has a reservation that overlaps these dates. Check My bookings or choose different dates.");
 }
 
 // Validate an upcoming date change and price it at the booked nightly rate.
@@ -258,6 +272,8 @@ export function routes(router, pool, auth) {
         2000,
         true,
       );
+      if (!req.user.phone?.trim())
+        fail(400, "Add a phone number so staff can reach you in an emergency.");
       const requestedPetId = id(petId);
       const requestedRoomTypeId = id(roomTypeId);
       const owner = req.user.user_id;
@@ -284,6 +300,7 @@ export function routes(router, pool, auth) {
           if (!roomType) fail(404, "Room type not found.");
           if (roomType.species !== pet.species)
             fail(400, "This room type is not suitable for that pet.");
+          await requireNoPetOverlap(db, requestedPetId, start, end);
           const room = await availableRoom(db, requestedRoomTypeId, start, end);
           if (!room)
             fail(
@@ -311,7 +328,7 @@ export function routes(router, pool, auth) {
             created.booking_id,
             owner,
             "BOOKING_CREATED",
-            "Room held for 15 minutes.",
+            `Room held for ${holdMinutes} minutes.`,
           );
           return get(db, created.booking_id, owner);
         },
@@ -345,12 +362,7 @@ export function routes(router, pool, auth) {
           "SELECT species, price_per_night FROM room_types WHERE room_type_id=$1", [typeKey],
         );
         if (!type || type.species !== pet.species) fail(400, "Choose a room type that suits your pet.");
-        const { rowCount: clashes } = await db.query(
-          `SELECT 1 FROM bookings WHERE pet_id=$1 AND booking_id<>$2 AND status IN ('PENDING','CONFIRMED')
-           AND check_in_date<$4::date AND check_out_date>$3::date LIMIT 1`,
-          [petKey, bookingId, start, end],
-        );
-        if (clashes) fail(409, "This pet has an overlapping booking. Choose different dates.");
+        await requireNoPetOverlap(db, petKey, start, end, bookingId);
         const room = await availableRoom(db, typeKey, start, end, bookingId, booking.roomId);
         if (!room) fail(409, "No rooms are available for those dates. Choose different dates or a different room.");
         const nightlyRate = booking.roomTypeId === String(typeKey) ? booking.nightlyRate : type.price_per_night;
@@ -360,6 +372,26 @@ export function routes(router, pool, auth) {
            WHERE booking_id=$1`, [bookingId, petKey, room.room_id, start, end, nightlyRate, care],
         );
         await log(db, bookingId, owner, "HOLD_UPDATED", "Reservation details updated before checkout.");
+        return get(db, bookingId, owner);
+      });
+      send(res, result);
+    },
+  );
+
+  router.delete(
+    "/bookings/:id/hold",
+    auth("CUSTOMER"),
+    /* Release the customer's unpaid reservation immediately. */ async (req, res) => {
+      const bookingId = id(req.params.id);
+      const owner = req.user.user_id;
+      const result = await transaction(pool, async (db) => {
+        await expire(db);
+        const current = await get(db, bookingId, owner);
+        if (current.status === "CANCELLED") return current;
+        if (current.status !== "PENDING")
+          fail(409, "Only unpaid reservations can be cancelled here. Check My bookings for other options.");
+        await db.query("UPDATE bookings SET status='CANCELLED' WHERE booking_id=$1", [bookingId]);
+        await log(db, bookingId, owner, "HOLD_CANCELLED", "Customer cancelled the unpaid reservation.");
         return get(db, bookingId, owner);
       });
       send(res, result);

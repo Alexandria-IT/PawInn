@@ -78,7 +78,10 @@
         x-cloak
         :class="{'active':active('pet-updates')}"
         :aria-current="active('pet-updates')?'page':null"
-        >Pet Updates</a
+        ><span class="inline-flex items-center gap-1.5">Pet Updates
+          <span x-show="$store.portal.hasUnreadPetUpdates" class="h-2 w-2 shrink-0 rounded-full bg-red-600" aria-hidden="true"></span>
+          <span x-show="$store.portal.hasUnreadPetUpdates" class="sr-only">Unread updates</span>
+        </span></a
       >
     </nav>
     <div
@@ -183,7 +186,10 @@
     <a
       href="/pages/pet-updates.html"
       x-show="$store.portal.user?.role==='CUSTOMER'"
-      >Pet Updates</a
+      ><span class="inline-flex items-center gap-1.5">Pet Updates
+        <span x-show="$store.portal.hasUnreadPetUpdates" class="h-2 w-2 shrink-0 rounded-full bg-red-600" aria-hidden="true"></span>
+        <span x-show="$store.portal.hasUnreadPetUpdates" class="sr-only">Unread updates</span>
+      </span></a
     >
     <a
       href="/pages/login.html"

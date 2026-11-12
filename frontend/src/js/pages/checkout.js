@@ -1,9 +1,9 @@
-import { editHold, pay } from "../api/bookings.js";
+import { cancelHold, editHold, pay } from "../api/bookings.js";
 import { catalog } from "../api/rooms.js";
 // Create state for a simulated checkout.
 export default () => ({
   id: "",
-  result: "success",
+  cancelling: false,
   accepted: false,
   error: "",
   busy: false,
@@ -21,7 +21,7 @@ export default () => ({
   },
   // Load the editor with the existing hold, including optional care instructions.
   async openEditor() {
-    if (!this.booking || this.busy) return;
+    if (!this.booking || this.busy || this.cancelling) return;
     this.error = "";
     this.editError = "";
     const { petId, roomTypeId, start, end, specialCare } = this.booking;
@@ -88,26 +88,37 @@ export default () => ({
   get countdown() {
     return `${Math.floor(this.seconds / 60)}:${String(this.seconds % 60).padStart(2, "0")}`;
   },
-  // Submit the simulated result and refresh the booking.
+  // Cancel the unpaid hold and return to the customer's bookings.
+  async cancelReservation() {
+    if (this.busy || this.cancelling) return;
+    this.cancelling = true;
+    this.error = "";
+    try {
+      await cancelHold(this.id);
+      location.href = "/pages/bookings.html";
+    } catch (error) {
+      this.error = error.message;
+    } finally {
+      this.cancelling = false;
+    }
+  },
+  // Confirm the reservation with a simulated payment.
   async submit() {
-    if (this.busy) return;
+    if (this.busy || this.cancelling || !this.seconds) return;
     this.error = "";
     if (!this.accepted) {
       this.error = "Please acknowledge that this is a simulated payment.";
       return;
     }
     this.busy = true;
-    const outcome = this.result === "success" ? "SUCCESS" : "FAILED";
+    const outcome = "SUCCESS";
     // Reuse the attempt ID when a network error leaves the result uncertain.
     if (this.attempt?.outcome !== outcome)
       this.attempt = { outcome, id: crypto.randomUUID() };
     try {
-      const b = await pay(this.id, outcome, this.attempt.id);
+      await pay(this.id, outcome, this.attempt.id);
       this.attempt = null;
       await this.$store.portal.refresh();
-      if (b.paymentStatus === "FAILED")
-        this.error =
-          "Simulated payment declined. Your room is still held—select success to retry.";
     } catch (error) {
       this.error = error.message;
     } finally {

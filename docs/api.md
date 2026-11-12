@@ -20,9 +20,10 @@ Account, Room and Booking endpoints below are implemented. Update this file when
 
 | Method/path | Behavior |
 | --- | --- |
-| POST /api/auth/register | Accept name, email, password and optional phone; create CUSTOMER only; return token and public user |
+| POST /api/auth/register | Accept name, email, password and a required contact phone number; create CUSTOMER only; return token and public user |
 | POST /api/auth/login | Accept email/password; return token and public user |
 | GET /api/users/me | Return the signed-in user |
+| PATCH /api/users/me | Customer adds or updates their emergency contact phone |
 | GET /api/pets | Return the customer's pets |
 | GET /api/pets/:id | Return an owned pet; booking can verify ownership directly against the shared pets table |
 | POST /api/pets | Create an owned pet |
@@ -62,6 +63,7 @@ Deactivation returns 409 when a room has a current or upcoming reservation. All 
 | POST /api/bookings | Accept petId, roomTypeId, start, end, and optional specialCare; choose an available physical room and calculate the price |
 | GET /api/bookings | Customers see their own; staff can see all; support optional petId/status filters |
 | GET /api/bookings/:id | Return an owned booking, or any booking for staff, including timeline and cancellation state |
+| DELETE /api/bookings/:id/hold | Customer cancels their unpaid hold and releases the room immediately |
 | PATCH /api/bookings/:id/hold | Edit a customer’s unpaid hold with the same fields as reservation; keep the reference and original expiry |
 | POST /api/bookings/:id/checkout | Accept outcome SUCCESS or FAILED and a payment attempt ID; simulate payment, safely handle retries |
 | POST /api/bookings/:id/cancellations | Accept reason; create a customer request for an eligible booking |
@@ -74,7 +76,7 @@ Deactivation returns 409 when a room has a current or upcoming reservation. All 
 | GET /api/bookings/updates | Customer reads their own quick updates and daily reports, newest first, with an optional `before` cursor |
 | GET /api/bookings/updates/:id/photo | Booking owner fetches the private image |
 | GET /api/bookings/:id/care | Staff or owner reads the stay’s Bangkok calendar, including missing reports |
-| PATCH /api/bookings/:id/care/arrival or /pickup | Staff records actual arrival or pickup (`at` ISO timestamp; defaults to now). Pickup completes the stay. |
+| PATCH /api/bookings/:id/care/arrival or /pickup | Staff records actual arrival or pickup within the scheduled dates in Bangkok (`at` ISO timestamp; defaults to now). Pickup completes the stay. |
 | PUT /api/bookings/:id/care/days/:date/report | Staff publishes or corrects a daily report; multipart `message` and `photo` fields |
 | POST /api/bookings/:id/care/days/:date/events | Staff records a care event immediately |
 | PATCH /api/bookings/:id/care/days/:date/events/:eventId | Staff corrects a care event |
@@ -86,7 +88,7 @@ Payment statuses: UNPAID, SUCCESS, FAILED.
 Cancellation statuses: PENDING, APPROVED, DECLINED.
 Refund statuses: NOT_REQUESTED, PENDING, SUCCESS, FAILED.
 
-Pending reservations hold inventory for 15 minutes, then expire to CANCELLED if unpaid. Reject overlapping bookings for a room or pet. Failed payment can be retried before expiry. Repeated successful checkout/review must not charge/refund twice. Approved cancellation records a full mock refund for a paid booking and releases the room; declined requests keep it confirmed.
+Pending reservations hold inventory for 2 minutes, then expire to CANCELLED if unpaid. Reject overlapping bookings for a room or pet. Failed payment can be retried before expiry. Repeated successful checkout/review must not charge/refund twice. Approved cancellation records a full mock refund for a paid booking and releases the room; declined requests keep it confirmed.
 
 Customers can request a new check-in and/or check-out for an upcoming confirmed stay. Quotes use the booked nightly rate and customers must confirm the new total. The original room and dates remain reserved while a request is pending. Approval rechecks that same physical room, ignores the booking’s own occupied nights, then updates dates, total and any simulated adjustment in one transaction. The booking reference stays the same. A conflict leaves the booking and request unchanged. Declining either type of change request requires a reason.
 
@@ -98,7 +100,7 @@ Daily care is separate from the informal update feed. Daily reports require a de
 
 The schema and demo data are implemented under `database/`; run the [database setup guide](../database/README.md). SQL uses snake_case; APIs keep the camelCase shapes above. Map `user_id` to user `id`, `full_name` to `name`, `care_notes` to `notes`, and booking `check_in_date`/`check_out_date`/`total_price` to `start`/`end`/`total`. Obtain a booking's `roomTypeId` by joining rooms. Never return password hashes.
 
-The sample accounts use public demo password `PawInnDemo123!`, stored as bcrypt hashes. Account verifies the bcrypt password at sign-in. Booking hold expiry is derived from `created_at + 15 minutes`; cancel expired unpaid PENDING rows before they continue blocking availability. The Booking API expires holds as part of availability and booking requests.
+The sample accounts use public demo password `PawInnDemo123!`, stored as bcrypt hashes. Account verifies the bcrypt password at sign-in. Booking hold expiry is derived from `created_at + 2 minutes`; cancel expired unpaid PENDING rows before they continue blocking availability. The Booking API expires holds as part of availability and booking requests.
 
 ## First integration example
 

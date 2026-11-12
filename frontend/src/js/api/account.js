@@ -29,6 +29,9 @@ export function logout() {
 }
 // Fetch the account associated with the token.
 export const currentUser = (token) => request("users/me", { token });
+// Save the emergency contact number for the signed-in customer.
+export const updatePhone = (phone) =>
+  request("users/me", { method: "PATCH", body: { phone }, token: getToken() });
 // Fetch the signed-in customer's pets.
 export const listPets = (token) => request("pets", { token });
 // Send only supported pet fields and choose create or update.

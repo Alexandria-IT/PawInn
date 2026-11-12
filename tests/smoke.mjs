@@ -130,6 +130,9 @@ async function verifyBookings() {
     password: "PawInnDemo123!",
   });
   const password = "SmokeTestOnly123!";
+  const missingPhone = { name: "Smoke Customer", email: randomUUID() + "@example.test", password };
+  await request("/api/auth/register", "POST", missingPhone, null, 400);
+  await request("/api/auth/register", "POST", { ...missingPhone, phone: "not a phone" }, null, 400);
   // Register a test customer and create its pet.
   async function participant() {
     const account = await request(
@@ -139,6 +142,7 @@ async function verifyBookings() {
         name: "Smoke Customer",
         email: randomUUID() + "@example.test",
         password,
+        phone: "+66 81 234 5678",
       },
       null,
       201,
@@ -245,7 +249,25 @@ async function verifyBookings() {
     /* Pick the customer whose request lost the race. */ (r) =>
       r.status === 409,
   ).p;
+  assert.equal((await request("/api/bookings/" + booking.id, "GET", null, staff.token)).customerPhone, "+66 81 234 5678");
+  assert.ok(Math.abs(booking.expiresAt - Date.parse(booking.createdAt) - 120_000) < 1);
   await request("/api/bookings/" + booking.id, "GET", null, foreign.token, 404);
+  const duplicate = await fetch(origin + "/api/bookings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + p.token },
+    body: JSON.stringify({ petId: p.pet.id, roomTypeId: dog.id, start, end }),
+  });
+  assert.equal(duplicate.status, 409);
+  assert.match((await duplicate.json()).message, /already has a reservation/i);
+  const held = await request("/api/bookings", "POST", {
+    petId: foreign.pet.id, roomTypeId: dog.id, start: days(offset + 80), end: days(offset + 82),
+  }, foreign.token, 201);
+  const cancelledHoldPath = "/api/bookings/" + held.id + "/hold";
+  await request(cancelledHoldPath, "DELETE", null, p.token, 404);
+  assert.equal((await request(cancelledHoldPath, "DELETE", null, foreign.token)).status, "CANCELLED");
+  assert.equal((await request(cancelledHoldPath, "DELETE", null, foreign.token)).status, "CANCELLED");
+  await request("/api/bookings/" + held.id + "/checkout", "POST",
+    { outcome: "SUCCESS", attemptId: randomUUID() }, foreign.token, 409);
   await request(
     "/api/rooms/" + booking.roomId,
     "PATCH",
@@ -399,7 +421,12 @@ async function verifyBookings() {
   }, p.token, 201);
   await request("/api/bookings/" + careBooking.id + "/checkout", "POST",
     { outcome: "SUCCESS", attemptId: randomUUID() }, p.token);
-  await verifyCare({ request, staff, customer: p, foreign, booking: careBooking, origin });
+  await request("/api/bookings/" + careBooking.id + "/care/arrival", "PATCH", {}, staff.token, 409);
+  const careCustomer = await request("/api/auth/login", "POST", {
+    email: "jamie@pawinn.demo", password: "PawInnDemo123!",
+  });
+  await postUpdate("3999", staff.token, "Care history test update.", null);
+  await verifyCare({ request, staff, customer: careCustomer, foreign, booking: { id: "3999" }, origin });
   await verifyAdmin({
     request, staff, customer: p, customerPassword: password, bookingId: confirmed.id,
     adminEmail: process.env.PAWINN_TEST_ADMIN_EMAIL,

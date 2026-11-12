@@ -100,6 +100,7 @@ test("Account API with a disposable seeded pawinn_test database", /* Run Account
         name: "Integration Customer",
         email: randomUUID() + "@example.test",
         password,
+        phone: "081 234 5678",
       };
       assert.equal(
         (

@@ -1,4 +1,4 @@
-import { fail, id, send, body, transaction, today } from "../shared/runtime.js";
+import { fail, id, send, body, transaction, today, holdMinutes } from "../shared/runtime.js";
 
 const roomFields = `room_id::text AS id, room_type_id::text AS "roomTypeId",
   room_number AS "roomNumber", is_active AS "isActive"`;
@@ -58,7 +58,7 @@ export function routes(router, pool, auth) {
               rows: [{ occupied }],
             } = await db.query(
               `SELECT EXISTS(SELECT 1 FROM bookings WHERE room_id=$1 AND check_out_date>$2::date
-          AND (status='CONFIRMED' OR (status='PENDING' AND created_at>now()-interval '15 minutes'))) AS occupied`,
+          AND (status='CONFIRMED' OR (status='PENDING' AND created_at>now()-interval '${holdMinutes} minutes'))) AS occupied`,
               [roomId, today()],
             );
             if (occupied)

@@ -63,6 +63,16 @@ function petInput(body, partial = false) {
   return result;
 }
 
+// Validate a required contact number with optional international formatting.
+function phoneNumber(value) {
+  if (typeof value !== "string" || !value.trim())
+    fail(400, "Enter a phone number so staff can reach you in an emergency.");
+  const phone = clean(value, "Phone number", 30, 1);
+  if (!/^\+?[0-9() .-]+$/.test(phone) || !/^\d{7,15}$/.test(phone.replace(/\D/g, "")))
+    fail(400, "Enter a valid phone number with 7 to 15 digits.");
+  return phone;
+}
+
 // Register authentication and pet routes.
 export function accountRoutes(pool, secret, allowFixtures) {
   // Reject reserved fixture accounts in normal mode.
@@ -132,7 +142,7 @@ export function accountRoutes(pool, secret, allowFixtures) {
       const { email, password } = credentials(body, 8);
       if (fixtureBlocked(email)) fail(400, "Use a different email address.");
       const name = clean(body.name, "Full name", 80, 2);
-      const phone = clean(body.phone, "Phone", 30);
+      const phone = phoneNumber(body.phone);
       try {
         const hash = await bcrypt.hash(password, 10);
         const {
@@ -181,6 +191,15 @@ export function accountRoutes(pool, secret, allowFixtures) {
     /* Return the current public user profile. */ (req, res) =>
       send(res, userDto(req.accountUser)),
   );
+  // Let customers add or update their own emergency contact number.
+  router.patch("/users/me", authenticate, customer, async (req, res) => {
+    const phone = phoneNumber(fields(req.body, ["phone"]).phone);
+    const { rows: [user] } = await pool.query(
+      "UPDATE users SET phone=$2 WHERE user_id=$1 RETURNING " + userFields,
+      [req.accountUser.user_id, phone],
+    );
+    send(res, userDto(user));
+  });
   registerAdminRoutes(router, pool, authenticate, { allowFixtures, fixtureBlocked });
   router.use("/pets", authenticate, customer);
   router.get(

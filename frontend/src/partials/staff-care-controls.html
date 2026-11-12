@@ -3,6 +3,9 @@
     <p class="eyebrow mb-2" x-text="careBooking?.id"></p>
     <h2 id="staff-stay-care-title" x-ref="staffCareTitle" tabindex="-1">Stay care</h2>
     <p class="muted mt-1 break-words" x-text="careBooking?.petName"></p>
+    <p class="muted text-sm mt-1" x-show="careBooking?.customerPhone">
+      Owner phone: <span x-text="careBooking?.customerPhone"></span>
+    </p>
   </div>
   <button
     type="button"
@@ -25,7 +28,7 @@
     type="button"
     class="btn btn-outline btn-sm"
     x-show="careData?.status === 'CONFIRMED' && !careData?.arrivedAt"
-    :disabled="careWriting || careLoading"
+    :disabled="careWriting || careLoading || !attendanceBounds('arrival').available"
     @click="openAttendance('arrival')"
   >
     Record arrival
@@ -34,7 +37,7 @@
     type="button"
     class="btn btn-outline btn-sm"
     x-show="careData?.status === 'CONFIRMED' && careData?.arrivedAt && !careData?.pickedUpAt"
-    :disabled="careWriting || careLoading"
+    :disabled="careWriting || careLoading || !attendanceBounds('pickup').available"
     @click="openAttendance('pickup')"
   >
     Record pickup
@@ -68,6 +71,9 @@
   </button>
 </div>
 
+<p class="text-sm muted mb-4" x-show="careData?.status === 'CONFIRMED' && !careData?.arrivedAt && !attendanceBounds('arrival').available">
+  Arrival can be recorded starting <span x-text="careDate(careBooking?.start)"></span> (Bangkok time).
+</p>
 <div class="border-y border-stone-200 py-4 mb-4" x-show="careForm">
   <h3
     class="text-lg mb-3"
@@ -80,7 +86,9 @@
       <fieldset class="space-y-3" :disabled="careWriting">
         <label>
           Actual date and time (Bangkok)
-          <input type="datetime-local" x-model="attendanceTime" required />
+          <input type="datetime-local" x-model="attendanceTime"
+            :min="attendanceBounds(careForm).min" :max="attendanceBounds(careForm).max" required />
+          <span class="text-xs muted">Choose an actual time within the scheduled stay.</span>
         </label>
         <p class="text-sm muted" x-show="careForm === 'pickup'">
           Recording pickup completes the stay.
@@ -148,7 +156,12 @@
         </div>
         <label>
           Care type
-          <input type="text" maxlength="100" x-model="careEvent.careType" required />
+          <select x-model="careEvent.careType" required>
+            <option value="" disabled>Choose a care type</option>
+            <template x-for="type in careTypeOptions" :key="type">
+              <option :value="type" x-text="type"></option>
+            </template>
+          </select>
         </label>
         <label>
           Action

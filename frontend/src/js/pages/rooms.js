@@ -1,3 +1,4 @@
+import { updatePhone } from "../api/account.js";
 import { listRooms } from "../api/rooms.js";
 import { reserve } from "../api/bookings.js";
 import { today, addDays, goToLogin } from "../helpers.js";
@@ -17,6 +18,7 @@ export default () => ({
   selected: null,
   petId: "",
   specialCare: "",
+  phone: "",
   reserveError: "",
   busy: false,
   // Restore search filters from the URL.
@@ -94,6 +96,7 @@ export default () => ({
     this.selected = room;
     this.petId = this.suitablePets.find((p) => p.id === this.searchPetId)?.id ?? this.suitablePets[0]?.id ?? "";
     this.specialCare = "";
+    this.phone = "";
     this.reserveError = "";
   },
   // Reserve the room and open checkout.
@@ -101,6 +104,9 @@ export default () => ({
     if (this.busy) return;
     this.busy = true;
     try {
+      if (!this.$store.portal.user.phone?.trim()) {
+        this.$store.portal.user = await updatePhone(this.phone);
+      }
       const b = await reserve(
         this.petId,
         this.selected.id,

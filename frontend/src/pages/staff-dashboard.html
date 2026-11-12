@@ -390,6 +390,7 @@
           <template x-if="detail">
             <div class="space-y-3">
               <p x-text="'Booking #'+detail.id+' · '+detail.customerName+' · '+detail.petName"></p>
+              <p>Owner phone: <span x-text="detail.customerPhone || 'Not provided'"></span></p>
               <p x-text="detail.roomName+' · Room '+detail.roomNumber"></p>
               <p x-text="dateLabel(detail.start)+' to '+dateLabel(detail.end)"></p>
               <p x-text="'Booking status: '+detail.status"></p>

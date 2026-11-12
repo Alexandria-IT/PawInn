@@ -42,7 +42,7 @@ INSERT INTO booking_logs (log_id, booking_id, actor_user_id, action, details, cr
     (5001, 3001, 1001, 'BOOKING_CREATED', 'Reserved Cozy Den C101 for Mochi.', CURRENT_TIMESTAMP - INTERVAL '2 days'),
     (5002, 3001, 1001, 'PAYMENT_SUCCEEDED', 'Mock payment of THB 1950.', CURRENT_TIMESTAMP - INTERVAL '2 days' + INTERVAL '1 minute'),
     (5003, 3001, 1001, 'CANCELLATION_REQUESTED', 'Awaiting staff review.', CURRENT_TIMESTAMP - INTERVAL '1 hour'),
-    (5004, 3002, 1001, 'BOOKING_CREATED', 'Unpaid 15-minute hold for Miso.', CURRENT_TIMESTAMP),
+    (5004, 3002, 1001, 'BOOKING_CREATED', 'Unpaid 2-minute hold for Miso.', CURRENT_TIMESTAMP),
     (5005, 3003, 1002, 'BOOKING_CREATED', 'Reserved Garden Suite G101 for Buddy.', CURRENT_TIMESTAMP - INTERVAL '12 days'),
     (5006, 3003, 1002, 'PAYMENT_SUCCEEDED', 'Mock payment of THB 2850.', CURRENT_TIMESTAMP - INTERVAL '12 days' + INTERVAL '1 minute'),
     (5007, 3003, 1003, 'STAY_COMPLETED', 'Buddy checked out.', CURRENT_TIMESTAMP - INTERVAL '7 days'),

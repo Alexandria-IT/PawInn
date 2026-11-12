@@ -12,13 +12,23 @@ export default () => ({
   refreshPending: false,
   error: "",
   requestNumber: 0,
+  visibilityHandler: null,
   // Load once per customer session and discard data on sign-out.
   init() {
     this.$watch(
       "$store.portal.user?.id",
       /* Reload when the signed-in account changes. */ () => this.reset(),
     );
+    this.visibilityHandler = () => {
+      if (this.loaded && document.visibilityState === "visible")
+        this.$store.portal.notePetUpdates(this.items[0]?.id ?? null);
+    };
+    document.addEventListener("visibilitychange", this.visibilityHandler);
     this.reset();
+  },
+  // Stop tracking visibility when this feed is removed.
+  destroy() {
+    document.removeEventListener("visibilitychange", this.visibilityHandler);
   },
   // Invalidate outstanding requests and reload the active account.
   reset() {
@@ -42,6 +52,7 @@ export default () => ({
       const result = await listPetUpdates(before);
       if (requestNumber !== this.requestNumber) return;
       this.items = before ? [...this.items, ...result.updates] : result.updates;
+      if (!before) this.$store.portal.notePetUpdates(this.items[0]?.id ?? null);
       this.nextBefore = result.nextBefore;
       this.loaded = true;
     } catch (error) {
@@ -78,6 +89,7 @@ export default () => ({
         nextBefore = page.nextBefore;
       } while (oldest && nextBefore && !updates.some(({ id }) => id === oldest));
       this.items = updates;
+      this.$store.portal.notePetUpdates(updates[0]?.id ?? null);
       this.nextBefore = nextBefore;
       this.loaded = true;
       this.error = "";
