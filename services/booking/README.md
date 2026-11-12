@@ -1,33 +1,5 @@
 # Booking service
 
-Owner: Member 4. Status: TODO scaffold; this service does not run yet.
+Provides date availability, reservations, simulated checkout, history, cancellation and staff review. Holds last 15 minutes and expire to CANCELLED on booking/availability access. Payment and refund changes are atomic with their logs; retries do not duplicate a successful payment or refund. No card data or real money is handled.
 
-Own date availability, room/pet conflicts, reservations, mock checkout, cancellation review, refunds and history. Shared database: `pawinn`; suggested port: 3003.
-
-## Start here
-
-1. Read [the team plan](../../docs/team.md) and [API agreement](../../docs/api.md).
-2. Install Express and pg in this folder; add authentication/test dependencies only as needed. Let npm generate `package-lock.json` and commit it with your implementation.
-3. Start PostgreSQL using [the database guide](../../database/README.md). Use the provided [schema](../../database/booking/schema.sql) and [sample data](../../database/booking/seed.sql), then implement `db.js`. All schemas and seeds are already available through the root initialization script.
-4. Implement `routes.js` and `server.js`, including `GET /health`, input checks and backend access checks.
-5. Add working `start` and `test` scripts to `package.json`; document the commands here.
-6. Add meaningful tests in `tests/` and implement your Dockerfile.
-7. Update the API agreement with one request/response example; coordinate integration with Member 1.
-
-## File responsibilities
-
-| File | Job |
-| --- | --- |
-| `server.js` | Express setup, environment settings, error handler, health, listen/shutdown |
-| `routes.js` | Routes, short handlers, validation and access checks |
-| `db.js` | PostgreSQL pool and SQL queries for this service only |
-| `../../database/booking/schema.sql` | Initial tables/constraints for bookings, cancellation_requests and booking_logs |
-| `../../database/booking/seed.sql` | Invented demo data |
-| `tests/` | Service behavior tests |
-| `Dockerfile` | Build this service's image after it works locally |
-
-Read `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB` from root environment settings. All three services select the same database (`pawinn` by default) in their pg pools. The shared instance is on localhost for Node processes running on your computer; future Compose service containers use host `postgres` and port 5432. The owner must load/pass environment variables at startup; Node does not automatically load root `.env`. Authentication uses the agreed token settings. Shared reads and SQL joins are allowed; booking does not need internal account/room HTTP calls just to verify pet ownership or read room information.
-
-Keep all SQL in `database/booking/`, not duplicated here. This folder groups ownership; its tables live alongside the other services' tables in the same public schema. Primarily write your own tables and coordinate changes to referenced columns with affected teammates. Document safe incremental updates once tables contain data; initial SQL is not an automatic migration system.
-
-Keep this flat. Add another file only when it makes the code easier to follow.
+Run with the root Compose stack. The [API agreement](../../docs/api.md#member-4-booking) lists the routes. Run the root verification script to test concurrency, ownership and lifecycle rules.

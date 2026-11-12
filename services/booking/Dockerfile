@@ -1,3 +1,10 @@
-# TODO(Member 4): Build the service after its start command and lockfile exist.
-# Install dependencies with npm ci, copy source, and run the service.
-# This is a starter note, not a buildable image.
+FROM node:24-alpine
+WORKDIR /app/booking
+ENV NODE_ENV=production SERVICE_HOST=0.0.0.0
+COPY booking/package*.json ./
+RUN npm ci --omit=dev
+COPY booking/server.js booking/routes.js ./
+COPY shared/ /app/shared/
+USER node
+EXPOSE 3003
+CMD ["node","server.js"]

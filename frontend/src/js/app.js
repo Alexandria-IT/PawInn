@@ -26,10 +26,11 @@ for (const [name, component] of Object.entries({
 }))
   Alpine.data(name, component);
 installAlerts(Alpine);
-window.addEventListener("pawinn:update", () =>
-  Alpine.store("portal").refresh(),
-);
-window.addEventListener("storage", () => Alpine.store("portal").refresh());
-setInterval(() => Alpine.store("portal").refresh(), 15000);
-window.Alpine = Alpine;
 Alpine.start();
+
+window.addEventListener(
+  "pageshow",
+  /* Refresh the session when browser history restores a page. */ (event) => {
+    if (event.persisted) Alpine.store("portal").refresh();
+  },
+);

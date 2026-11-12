@@ -12,22 +12,9 @@
     ></span>
   </div>
   <div class="room-body flex flex-col flex-1">
-    <p class="eyebrow mb-3" x-text="room.tag"></p>
     <h3 x-text="room.name"></h3>
     <p class="text-xs muted mt-2" x-text="room.subtitle"></p>
-    <div class="flex flex-wrap gap-2 mt-4">
-      <template x-for="feature in room.features" :key="feature">
-        <span
-          class="text-[10px] bg-paper rounded-full px-2.5 py-1 muted"
-          x-text="feature"
-        ></span>
-      </template>
-    </div>
-    <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] muted mt-5">
-      <span x-text="room.size"></span><span aria-hidden="true">·</span
-      ><span>1 pet per room</span><span aria-hidden="true">·</span
-      ><span>Air conditioned</span>
-    </div>
+    <p class="text-xs muted mt-4">One pet per room</p>
     <div
       class="border-t border-stone-100 mt-5 pt-4 flex items-center justify-between gap-3"
     >
@@ -36,7 +23,7 @@
         ><span class="text-[11px] muted"> / night</span>
       </div>
       <a
-        x-show="!bookingMode"
+        x-show="!bookingMode && !active('rooms')"
         :href="'/pages/rooms.html?species='+room.species"
         class="text-link"
         >Take a look <span aria-hidden="true">↗</span></a

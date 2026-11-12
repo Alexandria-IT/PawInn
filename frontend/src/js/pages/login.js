@@ -1,30 +1,29 @@
 import { login } from "../api/account.js";
 import { nextPath } from "../helpers.js";
+// Create the sign-in form state.
 export default () => ({
   email: "",
   password: "",
   showPassword: false,
   error: "",
   busy: false,
+  // Submit the credentials from the form.
   submit() {
-    this.error = "";
-    if (this.password.length < 8) {
-      this.error =
-        "Use any made-up password of at least 8 characters in this demo.";
-      return;
-    }
-    this.signIn(this.email);
+    return this.signIn(this.email, this.password);
   },
-  signIn(email) {
+  // Sign in and route the user to the appropriate page.
+  async signIn(email, password) {
+    if (this.busy) return;
+    this.error = "";
+    this.busy = true;
     try {
-      this.busy = true;
-      const user = login(email);
+      const user = await login(email, password);
       this.password = "";
-      location.href = nextPath(
+      const fallback =
         user.role === "STAFF"
           ? "/pages/staff-dashboard.html"
-          : "/pages/bookings.html",
-      );
+          : "/pages/pets.html";
+      location.href = nextPath(fallback);
     } catch (error) {
       this.error = error.message;
       this.busy = false;

@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS bookings (
     refund_reference VARCHAR(100) UNIQUE,
     refunded_at TIMESTAMPTZ,
 
+    -- The composite key ensures the customer owns the pet on the reservation.
     FOREIGN KEY (pet_id, user_id) REFERENCES pets(pet_id, owner_id) ON DELETE RESTRICT,
     CHECK (check_out_date > check_in_date),
     CHECK (total_price = nightly_rate * (check_out_date - check_in_date)),
@@ -61,6 +62,7 @@ CREATE TABLE IF NOT EXISTS cancellation_requests (
     )
 );
 
+-- Keep prior decisions while allowing only one open request per booking.
 CREATE UNIQUE INDEX IF NOT EXISTS one_pending_cancellation_per_booking
     ON cancellation_requests (booking_id) WHERE status = 'PENDING';
 

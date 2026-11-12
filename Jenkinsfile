@@ -1,7 +1,30 @@
-// TODO(Member 3): Local course-demo deployment pipeline.
-// Run Jenkins on a machine that has access to Docker and Docker Compose.
-// Check out the intended commit and confirm GitHub Actions passed for that commit.
-// Build images, run `docker compose up -d`, and check application/service health.
-// Fail the deployment if build/start/health checks fail; keep database volumes.
-// Do not duplicate all GitHub Actions tests here.
-// This is a starter note, not an implemented Jenkins pipeline.
+pipeline {
+    agent any
+    options { disableConcurrentBuilds() }
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                // Reuse the commit-tagged images from verification during deployment.
+                script { env.PAWINN_TAG = sh(returnStdout: true, script: 'git rev-parse --short=12 HEAD').trim() }
+            }
+        }
+        stage('Build and verify') {
+            steps { sh 'sh scripts/verify.sh' }
+        }
+        stage('Deploy tested images') {
+            when { branch 'main' }
+            steps {
+                withCredentials([file(credentialsId: 'pawinn-env', variable: 'DEPLOY_ENV')]) {
+                    sh '''
+                        set -eu
+                        docker compose --env-file "$DEPLOY_ENV" -p pawinn up -d --no-build --wait
+                        endpoint=$(docker compose --env-file "$DEPLOY_ENV" -p pawinn port frontend 80)
+                        curl -fsS "http://$endpoint/pages/rooms.html" >/dev/null
+                        curl -fsS "http://$endpoint/api/room-types" >/dev/null
+                    '''
+                }
+            }
+        }
+    }
+}

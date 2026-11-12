@@ -1,0 +1,9 @@
+services:
+  verify:
+    image: node:24-alpine
+    environment:
+      BASE_URL: http://frontend
+      PAWINN_TEST: "1"
+    volumes:
+      - ./tests:/tests:ro
+    command: ["node", "/tests/smoke.mjs"]

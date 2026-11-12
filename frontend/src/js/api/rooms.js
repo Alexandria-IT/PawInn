@@ -1,10 +1,46 @@
-import { ROOM_TYPES, availableRooms, validateDates } from "../demo.js";
-import { readData } from "../storage.js";
-export function listRooms(start, end) {
-  if (start && end) validateDates(start, end);
-  return ROOM_TYPES.map((type) => ({
-    ...type,
-    available:
-      start && end ? availableRooms(readData(), type.id, start, end).length : 2,
-  }));
+import { request } from "./client.js";
+import { getToken } from "./account.js";
+import { roomImage } from "../helpers.js";
+// Load room types for the frontend catalog.
+export async function catalog() {
+  const types = await request("room-types");
+  return types.map(
+    /* Add the display fields used by room cards. */ (t) => ({
+      ...t,
+      subtitle: t.description,
+      rate: t.pricePerNight,
+      image: roomImage(t),
+    }),
+  );
 }
+// Combine catalog details with availability for the selected dates.
+export async function listRooms(start, end) {
+  const query = new URLSearchParams({ start, end });
+  const [types, availability] = await Promise.all([
+    catalog(),
+    request("availability?" + query),
+  ]);
+  const counts = new Map(
+    availability.map(
+      /* Index availability by room type ID. */ (x) => [
+        x.roomTypeId,
+        x.available,
+      ],
+    ),
+  );
+  return types.map(
+    /* Add the matching availability count to each room type. */ (t) => ({
+      ...t,
+      available: counts.get(t.id) || 0,
+    }),
+  );
+}
+// Fetch physical room inventory.
+export const inventory = () => request("rooms");
+// Set the active status of a physical room.
+export const setActive = (id, isActive) =>
+  request("rooms/" + encodeURIComponent(id), {
+    method: "PATCH",
+    token: getToken(),
+    body: { isActive },
+  });

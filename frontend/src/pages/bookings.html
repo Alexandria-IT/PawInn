@@ -11,6 +11,15 @@
   <body x-data="shell" data-page="bookings">
     <!-- include:header -->
     <main id="main" class="wrap" x-data="bookings">
+      <p class="notice" x-show="!$store.portal.ready" x-cloak>
+        Loading your account and reservations…
+      </p>
+      <div class="notice my-4" x-show="$store.portal.error" x-cloak>
+        <p x-text="$store.portal.error" role="alert"></p>
+        <button class="text-link" @click="$store.portal.refresh()">
+          Try again
+        </button>
+      </div>
       <div class="page-intro flex flex-wrap items-center justify-between gap-5">
         <div>
           <p class="eyebrow">EVERY STAY HAS A LITTLE STORY</p>
@@ -54,8 +63,8 @@
           <template x-for="booking in items" :key="booking.id"
             ><article class="card flex flex-col md:flex-row">
               <img
-                :src="'/assets/images/'+typeFor(booking.typeId).image"
-                :alt="'Illustration of '+typeFor(booking.typeId).name"
+                :src="'/assets/images/'+roomImage(booking)"
+                :alt="'Illustration of '+booking.roomName"
                 class="w-full md:w-52 h-44 md:h-auto object-cover"
                 width="220"
                 height="200"
@@ -75,7 +84,7 @@
                     </h2>
                     <p
                       class="text-xs muted mt-2"
-                      x-text="typeFor(booking.typeId).name+' · '+booking.roomId"
+                      x-text="booking.roomName+' · '+booking.roomNumber"
                     ></p>
                   </div>
                   <div class="text-right">
@@ -190,7 +199,7 @@
               </div>
               <div class="summary-line">
                 <span class="muted">Room</span
-                ><span x-text="typeFor(detail.typeId).name"></span>
+                ><span x-text="detail.roomName"></span>
               </div>
               <div class="summary-line">
                 <span class="muted">Check-in</span
@@ -217,7 +226,7 @@
                 <p
                   x-show="detail.refundAmount"
                   class="mt-2"
-                  x-text="'Demo refund: '+money(detail.refundAmount||0)"
+                  x-text="'Simulated refund: '+money(detail.refundAmount||0)"
                 ></p>
               </div>
               <h3 class="text-sm mt-6 mb-4">Their stay, step by step</h3>
@@ -275,7 +284,7 @@
             Send a cancellation request for
             <strong x-text="cancelTarget?.id"></strong>. Your stay remains
             confirmed while staff reviews it. Approved requests receive a full
-            simulated refund in this demo.
+            simulated refund.
           </p>
           <form @submit.prevent="submitCancel()" class="space-y-4">
             <label

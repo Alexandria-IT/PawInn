@@ -78,7 +78,7 @@
           >
         </div>
       </section>
-      <form class="search-bar" @submit.prevent="searchStay($event)">
+      <form class="search-bar" @submit.prevent="searchStay($event)" x-cloak>
         <label
           >Check-in<input
             type="date"
@@ -131,7 +131,8 @@
       </section>
       <section
         class="mt-16"
-        x-data="{bookingMode:false,featured:['classic','garden','cat'].map(id=>typeFor(id))}"
+        x-data="{bookingMode:false}"
+        x-init="loadCatalog()"
       >
         <div class="section-heading">
           <div>
@@ -142,6 +143,13 @@
             >All rooms <span aria-hidden="true">↗</span></a
           >
         </div>
+        <p
+          x-show="catalogError"
+          class="error mb-4"
+          x-text="catalogError"
+          role="alert"
+          x-cloak
+        ></p>
         <div class="grid md:grid-cols-3 gap-5">
           <template x-for="room in featured" :key="room.id"
             ><!-- include:roomcard --></template
@@ -178,7 +186,7 @@
             <span class="text-clay text-xs font-semibold">03 /</span>
             <h3 class="mt-4 mb-2 text-sm">Make it official</h3>
             <p class="text-xs muted leading-6">
-              Complete demo checkout and keep everything in your portal.
+              Complete simulated checkout and keep everything in your portal.
             </p>
           </div>
         </div>

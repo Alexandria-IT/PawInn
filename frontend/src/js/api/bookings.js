@@ -1,32 +1,30 @@
-import {
-  createBooking,
-  payBooking,
-  requestCancellation,
-  reviewCancellation,
-  today,
-} from "../demo.js";
-import { mutate, session } from "../storage.js";
-export const reserve = (...args) =>
-  mutate((data) => createBooking(data, session(), ...args));
-export const pay = (id, success) =>
-  mutate((data) => payBooking(data, session(), id, success));
-export const cancel = (id, reason) =>
-  mutate((data) => requestCancellation(data, session(), id, reason));
-export const review = (id, approved, note) =>
-  mutate((data) => reviewCancellation(data, session(), id, approved, note));
-export function complete(id) {
-  return mutate((data) => {
-    if (session()?.role !== "STAFF")
-      throw new Error("Staff access is required.");
-    const b = data.bookings.find((b) => b.id === id);
-    if (!b || b.status !== "CONFIRMED" || b.end > today())
-      throw new Error(
-        "Only confirmed stays whose check-out date has arrived can be completed.",
-      );
-    b.status = "COMPLETED";
-    b.logs.push({
-      at: new Date().toISOString(),
-      text: "Stay marked completed by staff",
-    });
+import { request } from "./client.js";
+import { getToken } from "./account.js";
+// Send a Booking request with the current token.
+const call = (path, method = "GET", body) =>
+  request(path, { method, body, token: getToken() });
+// Fetch bookings visible to the signed-in account.
+export const listBookings = () => call("bookings");
+// Request a hold for the pet, room type, and dates.
+export const reserve = (petId, roomTypeId, start, end) =>
+  call("bookings", "POST", { petId, roomTypeId, start, end });
+// Submit a simulated checkout attempt.
+export const pay = (id, outcome, attemptId) =>
+  call("bookings/" + encodeURIComponent(id) + "/checkout", "POST", {
+    outcome,
+    attemptId,
   });
-}
+// Send the customer's cancellation reason.
+export const cancel = (id, reason) =>
+  call("bookings/" + encodeURIComponent(id) + "/cancellations", "POST", {
+    reason,
+  });
+// Submit the staff decision and review note.
+export const review = (id, approved, notes) =>
+  call("cancellations/" + encodeURIComponent(id), "PATCH", {
+    decision: approved ? "APPROVED" : "DECLINED",
+    notes,
+  });
+// Mark an eligible stay complete.
+export const complete = (id) =>
+  call("bookings/" + encodeURIComponent(id) + "/complete", "PATCH");

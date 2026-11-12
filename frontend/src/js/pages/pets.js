@@ -1,5 +1,6 @@
 import { savePet, deletePet } from "../api/account.js";
 import { toast } from "../helpers.js";
+// Create an empty pet form with the default species.
 const blank = () => ({
   id: "",
   name: "",
@@ -8,41 +9,63 @@ const blank = () => ({
   birthDate: "",
   notes: "",
 });
+// Create pet list and form state.
 export default () => ({
   editing: false,
+  busy: false,
   deleting: null,
   form: blank(),
   error: "",
   removeError: "",
   filter: "All",
+  // Return pets matching the selected species filter.
   get pets() {
     return this.$store.portal.pets.filter(
-      (p) => this.filter === "All" || p.species === this.filter,
+      /* Include all pets or match the selected species. */ (p) =>
+        this.filter === "All" || p.species === this.filter,
     );
   },
+  // Open a new form or copy the selected pet for editing.
   open(pet) {
     this.form = pet ? { ...pet } : blank();
     this.error = "";
     this.editing = true;
   },
-  save() {
+  // Save the form and refresh pet data.
+  async save() {
+    if (this.busy) return;
+    this.error = "";
+    this.busy = true;
     try {
-      savePet(this.form);
+      await savePet(this.form);
+      await this.$store.portal.refresh();
       this.editing = false;
       toast("Pet profile saved. A little more like home.");
     } catch (error) {
       this.error = error.message;
+      if (error.status === 401) await this.$store.portal.refresh();
+    } finally {
+      this.busy = false;
     }
   },
-  remove() {
+  // Delete the selected pet and refresh the list.
+  async remove() {
+    if (this.busy || !this.deleting) return;
+    this.removeError = "";
+    this.busy = true;
     try {
-      deletePet(this.deleting.id);
+      await deletePet(this.deleting.id);
+      await this.$store.portal.refresh();
       this.deleting = null;
       toast("Pet profile removed. Booking history is preserved.");
     } catch (error) {
       this.removeError = error.message;
+      if (error.status === 401) await this.$store.portal.refresh();
+    } finally {
+      this.busy = false;
     }
   },
+  // Format the pet's age in months or years.
   age(birthDate) {
     if (!birthDate) return "Age not added";
     const birth = new Date(birthDate + "T00:00:00"),

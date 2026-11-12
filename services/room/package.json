@@ -3,5 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "TODO scaffold: room service. See README.md for implementation tasks."
+  "description": "PawInn room service",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --env-file=../../.env server.js"
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.23.1"
+  }
 }

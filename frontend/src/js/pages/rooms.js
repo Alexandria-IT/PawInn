@@ -1,8 +1,10 @@
 import { listRooms } from "../api/rooms.js";
 import { reserve } from "../api/bookings.js";
 import { today, addDays, goToLogin } from "../helpers.js";
+// Create room search and reservation state.
 export default () => ({
   bookingMode: true,
+  loading: false,
   start: addDays(today(), 10),
   end: addDays(today(), 13),
   species: "All",
@@ -15,6 +17,7 @@ export default () => ({
   petId: "",
   reserveError: "",
   busy: false,
+  // Restore search filters from the URL.
   init() {
     const p = new URLSearchParams(location.search);
     this.start = p.get("start") || this.start;
@@ -24,9 +27,16 @@ export default () => ({
       : "All";
     this.search();
   },
-  search() {
+  // Load availability for the current dates and update the URL.
+  async search() {
+    if (this.loading) return;
+    this.loading = true;
+    const { start, end } = this;
     try {
-      this.results = listRooms(this.start, this.end);
+      const results = await listRooms(start, end);
+      // The inputs may have changed while availability was being fetched.
+      if (this.start !== start || this.end !== end) return;
+      this.results = results;
       this.error = "";
       this.checked = true;
       const url = new URL(location.href);
@@ -38,42 +48,57 @@ export default () => ({
       this.error = error.message;
       this.checked = false;
       this.results = [];
+    } finally {
+      this.loading = false;
     }
   },
+  // Apply the room filters and selected sorting.
   get filtered() {
-    let rooms = this.results.filter(
-      (r) =>
+    const rooms = this.results.filter(
+      /* Match room species and the search text. */ (r) =>
         (this.species === "All" || r.species === this.species) &&
-        `${r.name} ${r.features.join(" ")}`
+        `${r.name} ${r.description || ""}`
           .toLowerCase()
           .includes(this.query.toLowerCase()),
     );
     return this.sort === "price"
-      ? rooms.sort((a, b) => a.rate - b.rate)
+      ? rooms.sort(
+          /* Sort by lowest nightly rate first. */ (a, b) => a.rate - b.rate,
+        )
       : rooms;
   },
+  // Return pets compatible with the selected room.
   get suitablePets() {
     return this.$store.portal.pets.filter(
-      (p) => p.species === this.selected?.species,
+      /* Match the pet species to the room type. */ (p) =>
+        p.species === this.selected?.species,
     );
   },
+  // Open the reservation form for a signed-in customer.
   choose(room) {
     if (!this.$store.portal.user) {
       goToLogin();
       return;
     }
     if (this.$store.portal.user.role !== "CUSTOMER") {
-      this.error = "Use the customer demo account to book a stay.";
+      this.error = "Sign in as a customer to book a stay.";
       return;
     }
     this.selected = room;
     this.petId = this.suitablePets[0]?.id || "";
     this.reserveError = "";
   },
-  book() {
+  // Reserve the room and open checkout.
+  async book() {
+    if (this.busy) return;
     this.busy = true;
     try {
-      const b = reserve(this.petId, this.selected.id, this.start, this.end);
+      const b = await reserve(
+        this.petId,
+        this.selected.id,
+        this.start,
+        this.end,
+      );
       location.href = `/pages/checkout.html?booking=${encodeURIComponent(b.id)}`;
     } catch (error) {
       this.reserveError = error.message;

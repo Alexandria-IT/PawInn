@@ -1,33 +1,19 @@
 # Account service
 
-Owner: Member 2. Status: TODO scaffold; this service does not run yet.
+Account handles customer registration, bcrypt login, bearer tokens and pet profiles in PostgreSQL. Start it with the root Compose stack. Protected routes check the current role and ownership. Accounts reserved for fixtures cannot sign in unless the test stack enables fixtures.
 
-Own registration/login, password hashing, role checks, user profile and pet ownership. Shared database: `pawinn`; suggested port: 3001.
+## Provision staff
 
-## Start here
+Create staff through the local operator CLI, never through public registration. In PowerShell, use a new staff email and choose a password of at least 12 characters:
 
-1. Read [the team plan](../../docs/team.md) and [API agreement](../../docs/api.md).
-2. Install Express and pg in this folder; add authentication/test dependencies only as needed. Let npm generate `package-lock.json` and commit it with your implementation.
-3. Start PostgreSQL using [the database guide](../../database/README.md). Use the provided [schema](../../database/account/schema.sql) and [sample data](../../database/account/seed.sql), then implement `db.js`. All schemas and seeds are already available through the root initialization script.
-4. Implement `routes.js` and `server.js`, including `GET /health`, input checks and backend access checks.
-5. Add working `start` and `test` scripts to `package.json`; document the commands here.
-6. Add meaningful tests in `tests/` and implement your Dockerfile.
-7. Update the API agreement with one request/response example; coordinate integration with Member 1.
+```powershell
+$staffPassword = Read-Host "New staff password" -MaskInput
+$staffPassword | docker compose exec -T account node staff.js staff@example.test "PawInn Staff"
+Remove-Variable staffPassword
+```
 
-## File responsibilities
+Use that email and password on the normal sign-in page. The CLI rejects an existing email. Account stores only the bcrypt hash.
 
-| File | Job |
-| --- | --- |
-| `server.js` | Express setup, environment settings, error handler, health, listen/shutdown |
-| `routes.js` | Routes, short handlers, validation and access checks |
-| `db.js` | PostgreSQL pool and SQL queries for this service only |
-| `../../database/account/schema.sql` | Initial tables/constraints for users and pets |
-| `../../database/account/seed.sql` | Invented demo data |
-| `tests/` | Service behavior tests |
-| `Dockerfile` | Build this service's image after it works locally |
+## API tests
 
-Read `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB` from root environment settings. All three services select the same database (`pawinn` by default) in their pg pools. The shared instance is on localhost for Node processes running on your computer; future Compose service containers use host `postgres` and port 5432. The owner must load/pass environment variables at startup; Node does not automatically load root `.env`. Authentication uses the agreed token settings. Shared reads and SQL joins are allowed; booking does not need internal account/room HTTP calls just to verify pet ownership or read room information.
-
-Keep all SQL in `database/account/`, not duplicated here. This folder groups ownership; its tables live alongside the other services' tables in the same public schema. Primarily write your own tables and coordinate changes to referenced columns with affected teammates. Document safe incremental updates once tables contain data; initial SQL is not an automatic migration system.
-
-Keep this flat. Add another file only when it makes the code easier to follow.
+Use a disposable seeded database named pawinn_test. Install locked dependencies with npm ci, set ACCOUNT_TEST_DATABASE_URL, and run npm test. The complete stack is checked by the root verification script.
