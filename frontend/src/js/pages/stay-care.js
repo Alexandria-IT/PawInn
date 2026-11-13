@@ -326,8 +326,28 @@ export default (isStaff) => ({
   // Record the selected timestamp in the hotel's time zone.
   submitAttendance() {
     const kind = this.careForm;
+    const selectedTime = this.attendanceTime;
+    this.attendanceNow = bangkokInput();
+    const { min, max, available } = this.attendanceBounds(kind);
+    if (!selectedTime) {
+      this.careFormError = "Enter the actual date and time (Bangkok time).";
+      return;
+    }
+    if (kind === "arrival" && (!available || selectedTime < min)) {
+      const opensAt = this.careData?.checkInOpensAt;
+      this.careFormError = opensAt
+        ? `Record arrival from ${opensAt} until midnight on the check-in date (Bangkok time).`
+        : "Refresh stay care to check the arrival hours.";
+      return;
+    }
+    if (!available || selectedTime < min || selectedTime > max) {
+      this.careFormError = kind === "pickup" && selectedTime < min
+        ? "Pickup cannot be before arrival."
+        : "Enter an actual time in the past or now (Bangkok time).";
+      return;
+    }
     return this.writeCare(
-      (id) => recordAttendance(id, kind, bangkokInstant(this.attendanceTime)),
+      (id) => recordAttendance(id, kind, bangkokInstant(selectedTime)),
       kind === "arrival" ? "Arrival recorded." : "Pickup recorded. Stay completed.",
       true,
     );

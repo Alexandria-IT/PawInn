@@ -82,7 +82,7 @@
     x-text="({ arrival: 'Record actual arrival', pickup: 'Record actual pickup', report: selectedReport ? 'Edit daily report' : 'Publish daily report', event: careEvent?.id ? 'Edit care entry' : 'Record care entry', update: 'Send a quick update' })[careForm]"
   ></h3>
   <template x-if="careForm === 'arrival' || careForm === 'pickup'">
-    <form @submit.prevent="submitAttendance()">
+    <form novalidate @submit.prevent="submitAttendance()">
       <fieldset class="space-y-3" :disabled="careWriting">
         <label>
           Actual date and time (Bangkok)
