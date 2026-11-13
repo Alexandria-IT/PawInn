@@ -10,7 +10,7 @@ PawInn เป็นเว็บจองโรงแรมสำหรับส�
 
 ### 1. เปิด course container และเชื่อมต่อ
 
-เปิด Docker บนเครื่องของคุณ แล้วรันใน PowerShell หรือ Terminal
+เปิด Docker บนเครื่องของคุณ แล้วรันใน PowerShell 
 
 ```sh
 docker run -dit --name devtools --privileged -p 127.0.0.1:2222:22 tuchsanai/devtools:2569_1
@@ -86,7 +86,7 @@ docker compose -p pawinn ps
 ```sh
 docker compose --env-file .env -f infra/jenkins/compose.yaml up -d --build
 ```
-
+ใช้คำสั่ง `nano .env` เพื่อดูรหัส admin ของ Jenkins และคัดลอกมาเก็บไว้ โดย Username ตอน login Jenkins ให้ใส่ว่า admin
 เปิด Jenkins บนเครื่องของคุณ เข้าสู่ระบบด้วยชื่อผู้ใช้ `admin` (หรือค่า `JENKINS_ADMIN_ID` ถ้าตั้งไว้) และรหัสผ่านจาก `JENKINS_ADMIN_PASSWORD` ใน `.env` จากนั้นเลือก **pawinn → Build Now** [Jenkins](http://127.0.0.1:8083)
 
 ตามค่าเริ่มต้น Jenkins จะดึงโค้ดจาก `main` บน GitHub รันการทดสอบ แล้ว deploy images ที่ผ่านการทดสอบลงใน Compose project `pawinn` ซึ่งเป็น project เดียวกับขั้นตอนที่ 3 ถ้าใช้ fork หรือ branch อื่น ให้ใส่ `PAWINN_REPO_URL` และ `PAWINN_BRANCH` ใน `.env` ก่อนเปิด Jenkins
