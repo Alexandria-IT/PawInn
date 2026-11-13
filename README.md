@@ -135,3 +135,72 @@ Staff ต้องบันทึกการมาถึงภายในว�
 | `scripts/` และ `tests/` | สคริปต์ตรวจสอบระบบและ integration tests |
 
 Backend ทั้งสามบริการใช้ Node.js และ Express เชื่อมต่อ PostgreSQL ฐานเดียวกัน [คู่มือ API](docs/api.md) · [คู่มือฐานข้อมูล](database/README.md) · [การแบ่งงานในทีม](docs/team.md)
+
+## สถาปัตยกรรมระบบ
+
+```mermaid
+flowchart TB
+    subgraph USERS["User journey"]
+        direction TB
+        CUSTOMER["Customer"]
+        STAFF["Staff"]
+        BOOK["Choose pet and dates, add care instructions, and pay with simulated checkout"]
+        CARE["Record arrival and publish a care report with a photo"]
+        UPDATES["View the report in Pet Updates"]
+        INV["Manage room inventory and planned closures"]
+
+        CUSTOMER --> BOOK
+        CUSTOMER --> UPDATES
+        STAFF --> CARE
+        STAFF --> INV
+        BOOK -.->|Confirmed stay| CARE
+        CARE -.->|Published report| UPDATES
+    end
+
+    subgraph DELIVERY["Delivery and operations"]
+        direction TB
+        DEV["Development team"] -->|Push or pull request| GIT["GitHub repository"]
+        GIT -->|Push or pull request| GHA["GitHub Actions CI · Run verification in isolated Compose"]
+        GIT -->|Poll or webhook, then checkout| J["Jenkins CD · Test frontend, build images, and run verification"]
+        J -->|Tests pass on deployment branch| IMAGES["Tested Docker images tagged by commit"]
+        J -.->|Tests fail| LOGS["Stop deployment and inspect logs"]
+        IMAGES --> DEPLOY["Docker Compose deploy · Reuse tested images and data volume"]
+        DEPLOY --> SMOKE["Post-deploy checks · Container health, rooms page, and room-types API"]
+    end
+
+    BOOK --> WEB["Browser · PawInn web UI"]
+    CARE --> WEB
+    UPDATES --> WEB
+    INV --> WEB
+
+    subgraph COURSE["DevTools course container · tuchsanai/devtools:2569_1"]
+        direction TB
+        REPRO["TA checks out the submitted commit and runs Docker Compose"]
+        REPRO -->|Runs scripts/verify.sh| COURSETEST["Isolated verification · SQL, APIs, and restart persistence"]
+
+        subgraph STACK["PawInn runtime · Docker Compose"]
+            direction TB
+            NGINX["Nginx · Serves HTML, Tailwind CSS, and Alpine.js · Reverse proxies API requests"]
+            ACCOUNT["Account Service · Express · Sign-in, roles, and pet profiles"]
+            ROOM["Room Service · Express · Room types, inventory, and planned closures"]
+            BOOKING["Booking Service · Express · Availability, reservations, checkout, and care"]
+            PG[("One shared PostgreSQL database")]
+            VOL[("postgres_data Docker volume")]
+
+            NGINX <-->|Authentication and pet profile APIs| ACCOUNT
+            NGINX <-->|Room types, inventory, and closure APIs| ROOM
+            NGINX <-->|Booking and care APIs · SSE from Booking| BOOKING
+            ACCOUNT <-->|SQL · users and pets| PG
+            ROOM <-->|SQL · rooms and closures| PG
+            BOOKING <-->|SQL · bookings and care · reads rooms and pets · receives LISTEN / NOTIFY| PG
+            PG --- VOL
+        end
+
+        REPRO -->|Starts the stack| STACK
+    end
+
+    WEB <-->|HTTP over SSH port forwarding · authenticated SSE to browser| NGINX
+    GIT -->|Clone submitted commit| REPRO
+    DEPLOY -->|Creates or updates service containers| STACK
+    SMOKE -->|Checks the running application| NGINX
+```
