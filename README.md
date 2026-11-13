@@ -122,6 +122,54 @@ unset staff_password
 - **หยุดและเปิดใหม่** ใช้ `docker compose -p pawinn stop` และ `docker compose -p pawinn up -d --wait` ตามลำดับ ข้อมูลจะอยู่ใน Docker volume `pawinn_postgres_data` ส่วน `docker compose down -v` จะลบ volume ด้วย
 - **พอร์ตซ้ำ** ถ้าพอร์ตใน course container ถูกใช้อยู่ ให้แก้ `FRONTEND_PORT`, `POSTGRES_PORT` หรือ `JENKINS_PORT` ใน `.env` ตามบริการที่ชน ถ้าแก้พอร์ตเว็บหรือ Jenkins ให้แก้พอร์ตปลายทางในตัวเลือก `ssh -L` ด้วย ถ้าพอร์ต `8082` หรือ `8083` ชนบนเครื่องของคุณ ให้แก้พอร์ตฝั่งแรกใน `-L` และเปิดเว็บด้วยพอร์ตใหม่นั้น
 
+### ทดสอบเกณฑ์เวลาด้วยข้อมูลจองที่เตรียมไว้
+
+การตั้งค่าปกติใน README เมื่อเปิด `PAWINN_SEED_DEMO=true` จะโหลดข้อมูลสาธิตทั่วไป รวมถึงการจอง #3001–#3006 ตอนสร้าง database volume ครั้งแรก หากต้องการทดสอบ Check-in, No-show และค่ารับกลับ ให้เปิด Docker Compose project ชื่อ `pawinn-manual` เพื่อใช้ฐานข้อมูลทดสอบแยก แล้วโหลด [ข้อมูลทดสอบเพิ่มเติม](database/tests/verify.sql)
+
+**1. เปิดชุดทดสอบและโหลดข้อมูล** จากโฟลเดอร์ PawInn ใน Course Container ใช้คำสั่งต่อไปนี้กับ volume ใหม่ โดยรันบล็อกนี้ครั้งเดียวต่อชุดทดสอบ
+
+```sh
+(
+  set -eu
+  export POSTGRES_DB=pawinn_test POSTGRES_USER=pawinn_test
+  export POSTGRES_PASSWORD=manual-test-only
+  export JWT_SECRET=pawinn-manual-test-signing-key-only
+  export POSTGRES_PORT=0 FRONTEND_PORT=8090 PAWINN_SEED_DEMO=true
+  export PAWINN_IMAGE_PREFIX=pawinn-manual
+
+  docker compose --env-file .env.example -p pawinn-manual up -d --build --wait
+  docker compose --env-file .env.example -p pawinn-manual exec -T postgres     psql -U pawinn_test -d pawinn_test -v ON_ERROR_STOP=1     -f /docker-entrypoint-initdb.d/tests/verify.sql
+)
+```
+
+**2. เปิดหน้าเว็บทดสอบ** จาก Terminal อีกหน้าบนเครื่องของคุณ แล้วเข้า [PawInn ชุดทดสอบ](http://127.0.0.1:8092)
+
+```sh
+ssh -N -o ExitOnForwardFailure=yes -p 2222 -L 127.0.0.1:8092:127.0.0.1:8090 root@127.0.0.1
+```
+
+เข้าสู่ระบบด้วยบัญชีตัวอย่าง `team@pawinn.demo` สำหรับ Staff หรือ `jamie@pawinn.demo` และ `alex@pawinn.demo` สำหรับ Customer ทั้งสามบัญชีใช้รหัสผ่าน `PawInnDemo123!` ให้ Staff ค้นเลขจองใน **Staff Dashboard → All bookings** แล้วเปิด **Stay care** ส่วน Customer ตรวจผลใน **My bookings → View details**
+
+**3. ใช้ข้อมูลในตารางทดสอบ** คำว่า “วันนี้” ในตารางหมายถึงวันที่โหลดสคริปต์ตามเวลากรุงเทพฯ การจองทั้งสี่รายการสร้างมาพร้อมการชำระเงินจำลองสำเร็จ
+
+| เลขจอง | ลูกค้า / สัตว์เลี้ยง | ห้อง | Check-in → Checkout | ข้อมูลที่เตรียมไว้และผลที่คาดหวัง |
+| --- | --- | --- | --- | --- |
+| #3996 | Alex / Luna | L104 | วันนี้ → พรุ่งนี้ | ยังไม่บันทึกการมาถึง หลังเวลา 12:30 น. ของวัน Check-in ให้ลองบันทึก 12:29 น. ซึ่งต้องถูกปฏิเสธ แล้วลอง 12:30 น. ซึ่งต้องบันทึกได้ |
+| #3997 | Alex / Buddy | G105 | 3 วันก่อน → เมื่อวาน | บันทึกการมาถึงไว้แล้ว ห้องขึ้น `Reserved` จนบันทึกรับกลับ กรอก **วัน Checkout ของรายการ** เวลา 13:01 น. ต้องขึ้น `Completed` และมีค่ารับกลับจำลอง 200 บาท |
+| #3998 | Jamie / Miso | L105 | 3 วันก่อน → พรุ่งนี้ | ยังไม่บันทึกการมาถึงและมีคำขอยกเลิกค้าง เมื่อเปิดรายการ ระบบต้องแสดง `Cancelled` เพราะ No-show ปล่อยห้องโดยไม่คืนเงิน และแสดงคำขอเป็น `Expired` |
+| #3999 | Jamie / Mochi | C101 | 3 วันก่อน → เมื่อวาน | บันทึกการมาถึงไว้แล้ว กรอก **วัน Checkout ของรายการ** เวลา 12:00 น. ต้องขึ้น `Completed` โดยไม่มีค่ารับกลับล่าช้า |
+| #3002 | Jamie / Miso | L101 | พรุ่งนี้ → อีก 3 วันนับจากวันที่ลง seed | เป็นการจองจาก seed เดิม สคริปต์ปรับเวลาสร้างให้ย้อนหลัง 3 นาทีเพื่อให้เลยระยะกันห้อง 2 นาที เมื่อเปิดรายการผ่าน Booking API ระบบต้องยกเลิก hold และห้องพร้อมให้จองตามเงื่อนไขปกติ |
+
+สคริปต์เพิ่มการจองใหม่ 4 รายการและคำขอยกเลิก 1 รายการ พร้อมปรับเวลาของ hold เดิม #3002 ส่วนแถวที่ใช้ตรวจข้อจำกัดของฐานข้อมูลจะถูกย้อนกลับหลังตรวจเสร็จ
+
+กรณี #3997 และ #3999 ให้ใช้วันที่ Checkout ที่แสดงในรายการเพื่อทดสอบได้ทันที ส่วน #3996 ต้องทดสอบในวัน Check-in ตั้งแต่ 12:30 น. เป็นต้นไปเพื่อให้ทั้ง 12:29 และ 12:30 เป็นเวลาที่กรอกทดสอบได้ในรอบเดียว หากทดสอบคนละวันหรือต้องการลองเวลารับกลับอีกครั้ง ให้สร้างชุดทดสอบด้วย volume ใหม่ เพราะแต่ละรายการบันทึกรับกลับได้ครั้งเดียวและ `verify.sql` เพิ่มเลขจองชุดเดิม
+
+ถ้าต้องการเริ่มชุดทดสอบใหม่ ให้ลบเฉพาะ volume ของ `pawinn-manual` ด้วยคำสั่งด้านล่าง แล้วรันขั้นตอนที่ 1 อีกครั้ง คำสั่งนี้จะลบข้อมูลที่สร้างไว้ในชุดทดสอบนี้
+
+```sh
+docker compose --env-file .env.example -p pawinn-manual down --volumes
+```
+
 ## โครงสร้างโปรเจกต์
 
 | โฟลเดอร์ | หน้าที่ |
