@@ -1,29 +1,27 @@
-# Shared PostgreSQL database
+# ฐานข้อมูล PostgreSQL ของ PawInn
 
-PawInn uses one PostgreSQL container with one database, `pawinn`. Account, Room and Booking each own writes to their tables, and share foreign keys and reads where needed.
+PawInn ใช้ PostgreSQL หนึ่งคอนเทนเนอร์และหนึ่งฐานข้อมูลชื่อ `pawinn` ตามค่าเริ่มต้น Account ดูแลผู้ใช้และสัตว์ Room ดูแลประเภทห้อง ห้องจริง และช่วงปิด Booking ดูแลการจอง คำขอเปลี่ยนแปลง ประวัติ และข้อมูลการดูแล บริการเชื่อมผ่าน `postgres:5432` ภายใน Compose
 
-- Account: users, pets, and account status.
-- Room: room types and physical rooms.
-- Booking: reservations, change requests and adjustments, booking logs, pet updates, attendance, daily reports, care events and corrections.
+ตั้ง `POSTGRES_USER`, `POSTGRES_DB`, `POSTGRES_PASSWORD` และ `JWT_SECRET` ตาม [ขั้นตอนใน README](../README.md) ตอนสร้าง volume ครั้งแรก `init.sql` จะสร้างตารางและเพิ่มห้อง 15 ห้อง หากตั้ง `PAWINN_SEED_DEMO=true` จะโหลดบัญชี สัตว์ การจอง และกรณีทดสอบเวลาเพิ่มด้วย ดูรายละเอียดใน [ตารางข้อมูลตัวอย่าง](../README.md#booking-time-fixtures)
 
-From the repository root, set POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB and JWT_SECRET in .env, then run `docker compose up -d --build --wait`. On a fresh volume, init.sql creates the schema and inserts the initial 15 rooms. With PAWINN_SEED_DEMO=false, no customer accounts, staff accounts or bookings are preloaded. With PAWINN_SEED_DEMO=true, the same startup also loads the full demo dataset. Run `docker compose exec postgres psql -U pawinn -d pawinn` to inspect the schema, substituting your settings if different.
+## ตรวจฐานข้อมูลที่กำลังรัน
 
-The Node services use postgres:5432 inside Compose. Host development uses the local published port. The database password is separate from an application password.
-
-## Existing databases
-
-Account and Booking migrate their tables on startup, including when an existing database volume is reused. Existing account statuses are preserved, bookings keep their dates and prices, and attendance remains empty when PawInn never recorded it. Older database volumes retain retired administrator rows and account audit history. Those accounts cannot sign in. Do not infer actual arrival or pickup times from the reservation dates.
-
-PostgreSQL initialization runs only on a fresh data directory. The upgrade from the previous PawInn stack uses the same schema and preserves the existing volume and records. Do not delete the volume to apply this change. Fixture accounts and histories stay stored. Normal sign-in and staff booking views exclude them.
-
-If you previously ran with the demo seed and are switching to non-demo mode, run this once to release any rooms still reserved by those sample bookings. The script keeps their history and logs each previous status.
+รันจากโฟลเดอร์ PawInn ภายใน Course Container เพื่อเปิด `psql` โดยใช้ค่าบัญชีฐานข้อมูลของคอนเทนเนอร์
 
 ```sh
-docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/booking/retire-fixtures.sql'
+docker compose -p pawinn exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 ```
 
-## Test fixtures
+## ใช้ข้อมูลเดิม
 
-Use `sh scripts/verify.sh` for a separate database named pawinn_test with the complete dataset. It sets PAWINN_SEED_DEMO=true on the disposable stack. The fixtures include two customers, one staff account, pets, 15 rooms, several booking states and the timing scenarios listed in the [main README](../README.md). Seed files are under the relevant service folders; seed.psql imports all of them. Never enable fixture accounts for a normal deployment.
+สคริปต์ตั้งต้นรันเมื่อ volume ว่างครั้งแรกเท่านั้น เมื่อเปิดระบบรุ่นใหม่ บริการจะปรับโครงสร้างที่จำเป็นบน volume เดิม ประวัติจองและเวลาที่บันทึกจริงจะยังอยู่ ใช้ค่าชื่อฐานข้อมูล ผู้ใช้ และรหัสผ่านชุดเดิม การแก้รหัสผ่านใน `.env` อย่างเดียวไม่ได้เปลี่ยนรหัสผ่านใน PostgreSQL ที่สร้างแล้ว
 
-The verified constraints include pet ownership, referenced-record deletion, date and price checks, and overlapping active bookings. Check-out dates are exclusive. Booking writes and Room inventory changes also acquire a short PostgreSQL transaction lock so that availability and inventory changes are ordered.
+หากเคยเปิด demo seed และจะเปลี่ยนมาใช้งานโดยปิด seed ให้รันคำสั่งนี้เพื่อปล่อยห้องที่ยังถูกจองโดยรายการตัวอย่าง สคริปต์เก็บแถวประวัติและบันทึกการเปลี่ยนสถานะ
+
+```sh
+docker compose -p pawinn exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -f /docker-entrypoint-initdb.d/booking/retire-fixtures.sql'
+```
+
+## ทดสอบแบบแยกฐานข้อมูล
+
+`sh scripts/verify.sh` สร้างฐานข้อมูลชั่วคราวชื่อ `pawinn_test` พร้อม demo seed ทดสอบความเป็นเจ้าของสัตว์ ความถูกต้องของราคา การจองทับช่วง และการคงข้อมูลหลังรีสตาร์ต ดู [คำสั่งและขอบเขตการทดสอบ](../tests/README.md)

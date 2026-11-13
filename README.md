@@ -122,6 +122,8 @@ unset staff_password
 - **หยุดและเปิดใหม่** ใช้ `docker compose -p pawinn stop` และ `docker compose -p pawinn up -d --wait` ตามลำดับ ข้อมูลจะอยู่ใน Docker volume `pawinn_postgres_data` ส่วน `docker compose down -v` จะลบ volume ด้วย
 - **พอร์ตซ้ำ** ถ้าพอร์ตใน course container ถูกใช้อยู่ ให้แก้ `FRONTEND_PORT`, `POSTGRES_PORT` หรือ `JENKINS_PORT` ใน `.env` ตามบริการที่ชน ถ้าแก้พอร์ตเว็บหรือ Jenkins ให้แก้พอร์ตปลายทางในตัวเลือก `ssh -L` ด้วย ถ้าพอร์ต `8082` หรือ `8083` ชนบนเครื่องของคุณ ให้แก้พอร์ตฝั่งแรกใน `-L` และเปิดเว็บด้วยพอร์ตใหม่นั้น
 
+<a id="booking-time-fixtures"></a>
+
 ### ทดสอบเกณฑ์เวลาด้วยข้อมูลจองที่เตรียมไว้
 
 ตั้ง `PAWINN_SEED_DEMO=true` ใน `.env` แล้วเปิดระบบตามขั้นตอนที่ 3 จากโฟลเดอร์ PawInn ใน Course Container:
@@ -158,73 +160,75 @@ docker compose -p pawinn up -d --build --wait
 | `infra/jenkins/` | การตั้งค่า Jenkins สำหรับเดโม |
 | `scripts/` และ `tests/` | สคริปต์ตรวจสอบระบบและ integration tests |
 
-Backend ทั้งสามบริการใช้ Node.js และ Express เชื่อมต่อ PostgreSQL ฐานเดียวกัน [คู่มือ API](docs/api.md) · [คู่มือฐานข้อมูล](database/README.md) · [การแบ่งงานในทีม](docs/team.md)
+Backend ทั้งสามบริการใช้ Node.js และ Express เชื่อมต่อ PostgreSQL ฐานเดียวกัน [คู่มือ API](docs/api.md) · [คู่มือฐานข้อมูล](database/README.md) · [สถาปัตยกรรม](docs/architecture.md) · [คู่มือตรวจและสาธิต](docs/local-demo.md) · [คู่มือทดสอบ](tests/README.md)
+
+<a id="system-architecture"></a>
 
 ## สถาปัตยกรรมระบบ
 
 ```mermaid
 flowchart TB
-    subgraph USERS["User journey"]
+    subgraph USERS["เส้นทางผู้ใช้"]
         direction TB
-        CUSTOMER["Customer"]
-        STAFF["Staff"]
-        BOOK["Choose pet and dates, add care instructions, and pay with simulated checkout"]
-        CARE["Record arrival and publish a care report with a photo"]
-        UPDATES["View the report in Pet Updates"]
-        INV["Manage room inventory and planned closures"]
+        CUSTOMER["ลูกค้า"]
+        STAFF["พนักงาน"]
+        BOOK["เลือกสัตว์และวัน ระบุคำแนะนำ และชำระเงินจำลอง"]
+        CARE["บันทึกการมาถึงและเผยแพร่รายงานพร้อมรูป"]
+        UPDATES["ดูรายงานใน Pet Updates"]
+        INV["จัดการห้องและกำหนดช่วงปิด"]
 
         CUSTOMER --> BOOK
         CUSTOMER --> UPDATES
         STAFF --> CARE
         STAFF --> INV
-        BOOK -.->|Confirmed stay| CARE
-        CARE -.->|Published report| UPDATES
+        BOOK -.->|ยืนยันการจอง| CARE
+        CARE -.->|เผยแพร่รายงาน| UPDATES
     end
 
-    subgraph DELIVERY["Delivery and operations"]
+    subgraph DELIVERY["การส่งมอบและตรวจระบบ"]
         direction TB
-        DEV["Development team"] -->|Push or pull request| GIT["GitHub repository"]
-        GIT -->|Push or pull request| GHA["GitHub Actions CI · Run verification in isolated Compose"]
-        GIT -->|Poll or webhook, then checkout| J["Jenkins CD · Test frontend, build images, and run verification"]
-        J -->|Tests pass on deployment branch| IMAGES["Tested Docker images tagged by commit"]
-        J -.->|Tests fail| LOGS["Stop deployment and inspect logs"]
-        IMAGES --> DEPLOY["Docker Compose deploy · Reuse tested images and data volume"]
-        DEPLOY --> SMOKE["Post-deploy checks · Container health, rooms page, and room-types API"]
+        DEV["ทีมพัฒนา"] -->|Push หรือ Pull Request| GIT["Repository บน GitHub"]
+        GIT -->|Push หรือ Pull Request| GHA["GitHub Actions CI · รันชุดตรวจใน Compose แยก"]
+        GIT -->|ตรวจ GitHub หรือรับ Webhook แล้วดึงโค้ด| J["Jenkins CD · ทดสอบหน้าเว็บ สร้างอิมเมจ และตรวจระบบ"]
+        J -->|ผลทดสอบผ่านบน branch ที่ใช้ deploy| IMAGES["อิมเมจที่ผ่านการตรวจ ติดแท็กตาม commit"]
+        J -.->|ผลทดสอบไม่ผ่าน| LOGS["หยุด deploy และดู log"]
+        IMAGES --> DEPLOY["Docker Compose deploy · ใช้อิมเมจที่ผ่านการตรวจและ volume เดิม"]
+        DEPLOY --> SMOKE["ตรวจหลัง deploy · สถานะคอนเทนเนอร์ หน้าห้อง และ API ประเภทห้อง"]
     end
 
-    BOOK --> WEB["Browser · PawInn web UI"]
+    BOOK --> WEB["เบราว์เซอร์ · หน้าเว็บ PawInn"]
     CARE --> WEB
     UPDATES --> WEB
     INV --> WEB
 
-    subgraph COURSE["DevTools course container · tuchsanai/devtools:2569_1"]
+    subgraph COURSE["Course Container · tuchsanai/devtools:2569_1"]
         direction TB
-        REPRO["TA checks out the submitted commit and runs Docker Compose"]
-        REPRO -->|Runs scripts/verify.sh| COURSETEST["Isolated verification · SQL, APIs, and restart persistence"]
+        REPRO["TA ดึง commit ส่งงานและรัน Docker Compose"]
+        REPRO -->|รัน scripts/verify.sh| COURSETEST["ชุดตรวจแยก · SQL, API และข้อมูลหลังรีสตาร์ต"]
 
-        subgraph STACK["PawInn runtime · Docker Compose"]
+        subgraph STACK["ระบบ PawInn · Docker Compose"]
             direction TB
-            NGINX["Nginx · Serves HTML, Tailwind CSS, and Alpine.js · Reverse proxies API requests"]
-            ACCOUNT["Account Service · Express · Sign-in, roles, and pet profiles"]
-            ROOM["Room Service · Express · Room types, inventory, and planned closures"]
-            BOOKING["Booking Service · Express · Availability, reservations, checkout, and care"]
-            PG[("One shared PostgreSQL database")]
-            VOL[("postgres_data Docker volume")]
+            NGINX["Nginx · ให้บริการหน้าเว็บและส่งต่อคำขอ API"]
+            ACCOUNT["Account · Express · เข้าสู่ระบบ สิทธิ์ และโปรไฟล์สัตว์"]
+            ROOM["Room · Express · ประเภทห้อง คลังห้อง และช่วงปิด"]
+            BOOKING["Booking · Express · ห้องว่าง การจอง การจ่าย และการดูแล"]
+            PG[("PostgreSQL ฐานเดียวร่วมกัน")]
+            VOL[("Docker volume postgres_data")]
 
-            NGINX <-->|Authentication and pet profile APIs| ACCOUNT
-            NGINX <-->|Room types, inventory, and closure APIs| ROOM
-            NGINX <-->|Booking and care APIs · SSE from Booking| BOOKING
-            ACCOUNT <-->|SQL · users and pets| PG
-            ROOM <-->|SQL · rooms and closures| PG
-            BOOKING <-->|SQL · bookings and care · reads rooms and pets · receives LISTEN / NOTIFY| PG
+            NGINX <-->|API เข้าสู่ระบบและโปรไฟล์สัตว์| ACCOUNT
+            NGINX <-->|API ประเภทห้อง คลังห้อง และช่วงปิด| ROOM
+            NGINX <-->|API การจองและการดูแล · SSE จาก Booking| BOOKING
+            ACCOUNT <-->|SQL · ผู้ใช้และสัตว์| PG
+            ROOM <-->|SQL · ห้องและช่วงปิด| PG
+            BOOKING <-->|SQL · การจองและการดูแล · อ่านห้องและสัตว์ · LISTEN / NOTIFY| PG
             PG --- VOL
         end
 
-        REPRO -->|Starts the stack| STACK
+        REPRO -->|เปิดระบบ| STACK
     end
 
-    WEB <-->|HTTP over SSH port forwarding · authenticated SSE to browser| NGINX
-    GIT -->|Clone submitted commit| REPRO
-    DEPLOY -->|Creates or updates service containers| STACK
-    SMOKE -->|Checks the running application| NGINX
+    WEB <-->|HTTP ผ่าน SSH port forwarding · SSE ที่ตรวจสิทธิ์ไปยังเบราว์เซอร์| NGINX
+    GIT -->|ดึง commit ส่งงาน| REPRO
+    DEPLOY -->|สร้างหรืออัปเดตคอนเทนเนอร์| STACK
+    SMOKE -->|ตรวจระบบหลัง deploy| NGINX
 ```

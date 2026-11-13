@@ -1,7 +1,28 @@
-# Verification
+# วิธีทดสอบ PawInn
 
-Run `sh scripts/verify.sh` from the root with Docker Compose. The script uses an isolated test database, runs SQL checks, tests the HTTP routes through Nginx, and checks persistence after a service restart.
+## ชุดทดสอบทั้งระบบ
 
-For a read-only deployment smoke check, set BASE_URL to the frontend and run `node tests/smoke.mjs` with PAWINN_TEST unset. PAWINN_TEST=1 registers customers and makes reservations; use that mode only in a disposable seeded stack.
+รันจากโฟลเดอร์ PawInn ภายใน Course Container ตาม [ขั้นตอนติดตั้ง](../README.md)
 
-Use the [course walkthrough](../docs/local-demo.md) to collect browser evidence.
+```sh
+sh scripts/verify.sh
+```
+
+สคริปต์สร้าง Compose project และฐานข้อมูล `pawinn_test` ชั่วคราว ตรวจ SQL และเรียก API ผ่าน Nginx ครอบคลุมการจองห้องพร้อมกัน การปิดห้อง การชำระและคืนเงิน การดูแล สิทธิ์ดูรูป กฎรับส่ง และการจัดการโปรไฟล์สัตว์ จากนั้นตรวจว่าประวัติยังอยู่หลังรีสตาร์ต และลบระบบทดสอบเมื่อจบ GitHub Actions และ Jenkins ใช้สคริปต์เดียวกัน
+
+## ตรวจเว็บที่เปิดอยู่
+
+รันจากโฟลเดอร์ PawInn ภายใน Course Container โดยใช้พอร์ตเว็บที่ตั้งไว้จริง
+
+```sh
+unset PAWINN_TEST
+BASE_URL=http://127.0.0.1:8080 node tests/smoke.mjs
+```
+
+เมื่อไม่ตั้ง `PAWINN_TEST` สคริปต์จะตรวจการตอบสนองของหน้าเว็บและ API โดยไม่สร้างรายการจอง ใช้ `PAWINN_TEST=1` เฉพาะในระบบทดสอบชั่วคราวที่เปิด seed เพราะโหมดนี้สร้างบัญชีและการจอง
+
+## ทดสอบ Account แยกบริการ
+
+เตรียม PostgreSQL สำหรับทดสอบที่มี schema และ demo seed ในฐานข้อมูลชื่อ `pawinn_test` ตั้ง `ACCOUNT_TEST_DATABASE_URL` ให้ชี้ไปที่ฐานข้อมูลนั้น แล้วรัน `npm ci` และ `npm test` จาก `services/account` ชุดทดสอบครอบคลุมการเข้าสู่ระบบ สิทธิ์ และโปรไฟล์สัตว์
+
+ดู [วิธีเก็บหลักฐานการส่งงาน](../docs/local-demo.md)

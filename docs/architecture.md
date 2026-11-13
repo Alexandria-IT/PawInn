@@ -1,23 +1,25 @@
-# PawInn architecture
+# สถาปัตยกรรม PawInn
 
-The browser uses one origin served by Nginx. The frontend renders the HTML/Tailwind/Alpine pages, while Nginx routes JSON APIs to the relevant Express container.
+เบราว์เซอร์รับหน้า HTML, Tailwind CSS และ Alpine.js จาก Nginx และเรียก API ผ่านที่อยู่เดียวกัน Nginx ส่งคำขอไปยังบริการ Express ตามเส้นทาง
 
-| Paths | Service | Database responsibility |
+| เส้นทาง | บริการ | หน้าที่ |
 | --- | --- | --- |
-| /api/auth, /api/users, /api/pets | Account | Users, credentials, and pet profiles |
-| /api/room-types, /api/rooms | Room | Catalog and inventory |
-| /api/availability, /api/bookings, /api/cancellations | Booking | Holds, simulated payments, change requests, attendance and care records |
+| `/api/auth`, `/api/users`, `/api/pets` | Account | จัดการบัญชี การเข้าสู่ระบบ และโปรไฟล์สัตว์ |
+| `/api/room-types`, `/api/rooms` | Room | จัดการประเภทห้อง ห้องจริง และช่วงปิด |
+| `/api/availability`, `/api/bookings`, `/api/cancellations` | Booking | ตรวจห้องว่าง จัดการการจอง ชำระเงินจำลอง รับส่งสัตว์ และบันทึกการดูแล |
 
-Each service has a database-aware /health endpoint. Only the frontend and the local PostgreSQL port are published on loopback by default. The three services use one PostgreSQL database and query shared related records where needed. This reduces course-project complexity; schema changes still require coordination.
+บริการทั้งสามใช้ PostgreSQL ฐานเดียวกันผ่านเครือข่าย Docker Compose ตารางมี Foreign Key เชื่อมข้อมูลบัญชี สัตว์ ห้อง และการจอง ทีมจึงต้องประสานกันเมื่อแก้ตารางที่ใช้ร่วมกัน ส่วนข้อมูลอยู่ใน Docker volume เพื่อให้ใช้งานต่อได้หลังสร้างคอนเทนเนอร์ใหม่
 
-Account issues expiring bearer tokens; the services verify issuer, audience and signature, then check the current role, account status and session version from PostgreSQL. Pet access and customer booking and care access are scoped to the signed-in owner. Customers register in the portal and operators create staff accounts from the Account container. Fixture accounts are disabled on a normal deployment.
+Account ออก Bearer token ที่มีวันหมดอายุ บริการตรวจลายเซ็นและตรวจบทบาท สถานะบัญชี และรุ่นของเซสชันจาก PostgreSQL คำขออ่านโปรไฟล์สัตว์ ประวัติจอง และรูปจำกัดตามสิทธิ์ของบัญชี การสร้าง Staff ใช้คำสั่งจาก Account container ตาม [README](../README.md#set-up-staff-access)
 
-Booking allocates available physical rooms and calculates prices in PostgreSQL. An advisory transaction lock serializes reservation and inventory changes for this small installation; exclusion constraints reject overlapping active holds even if another writer bypasses service logic. The service expires old holds before serving availability and booking operations. Checkout and refund actions are simulated and persist with their audit logs.
+Booking เลือกห้องจริงและคำนวณราคาในธุรกรรมเดียว การจองและการเปลี่ยนสถานะห้องใช้ PostgreSQL advisory lock ร่วมกัน และฐานข้อมูลปฏิเสธการจองห้องหรือสัตว์ซ้อนด้วย exclusion constraints หน้าเว็บที่รองรับจะรับสัญญาณ SSE จาก Booking เพื่อโหลดข้อมูลใหม่ ส่วนการชำระเงินและคืนเงินเป็นรายการจำลองที่บันทึกพร้อมประวัติ
 
-## Delivery
+## การส่งมอบและตรวจสอบ
 
-GitHub Actions and Jenkins execute `sh scripts/verify.sh` against a disposable Compose project. Jenkins tags the application images with the checked-out commit and deploys those same images on main on the same Docker engine. The [local Jenkins setup](../README.md#run-jenkins-in-docker) creates the job from code and mounts the PawInn `.env` read-only at `$JENKINS_HOME/pawinn-local.env`. A separately managed Jenkins installation can use a Secret file credential named `pawinn-env` with the same database settings. The credential takes precedence when configured.
+GitHub Actions กับ Jenkins ใช้ `sh scripts/verify.sh` ตรวจระบบใน Compose project ชั่วคราว Jenkins ติดแท็กอิมเมจตาม commit ใช้อิมเมจชุดที่ผ่านการทดสอบ deploy ลง project `pawinn` ตามค่าเริ่มต้น และตรวจหน้า **Our rooms** กับ API ประเภทห้องหลัง deploy
 
-Jenkins deploys to the `pawinn` Compose project by default. For a second local instance, set a distinct `PAWINN_DEPLOY_PROJECT` and unused `JENKINS_PORT`, `FRONTEND_PORT`, and `POSTGRES_PORT`. Start its Jenkins controller with a separate Compose project name using `-p`. For a manual app startup, use `-p` with the same app project name as `PAWINN_DEPLOY_PROJECT`. Before replacing the application containers, it verifies that the deployment settings can connect to the existing PostgreSQL service. If the check fails, correct the Jenkins settings to match the database. Changing `POSTGRES_PASSWORD` in an environment file only affects database initialization on an empty volume.
+[วิธีเปิด Jenkins สำหรับเดโม](../README.md#run-jenkins-in-docker) ใช้ไฟล์ `.env` ร่วมกับ PawInn ถ้าตั้ง Jenkins เอง สามารถใส่ไฟล์ตั้งค่าผ่าน Secret file credential ชื่อ `pawinn-env` ซึ่งมีลำดับก่อนค่าจากไฟล์ใน Jenkins container ก่อนเปลี่ยนคอนเทนเนอร์ Jenkins จะตรวจว่าค่าที่ใช้ deploy เชื่อมกับฐานข้อมูลเดิมได้
 
-Run the verification script inside the assigned `tuchsanai/devtools:2569_1` course container using the instructor's startup instructions. Keep the commit, test output and Jenkins logs as evidence. Public internet hosting would need TLS and an operational review; the default setup is a local course deployment.
+PawInn เปิดบนพอร์ต 8080 และ Jenkins เปิดบนพอร์ต 8081 ภายใน Course Container ตามค่าเริ่มต้น ผู้ใช้เปิดจากเครื่องผ่าน SSH forwarding ที่ 8082 และ 8083 ตามลำดับ Compose จะเริ่ม frontend หลังบริการ API พร้อมรับคำขอ ระหว่างสร้าง frontend ใหม่ พอร์ตเว็บอาจหยุดตอบชั่วคราวจนบริการพร้อม
+
+ดู [แผนภาพระบบ](../README.md#system-architecture) และ [คู่มือตรวจงานใน Course Container](local-demo.md)

@@ -1,111 +1,78 @@
-# PawInn API agreement
+# คู่มือ API ของ PawInn
 
-Account, Room and Booking endpoints below are implemented. Update this file when an API changes.
+เบราว์เซอร์เรียก API ผ่าน Nginx ที่ origin เดียวกับหน้าเว็บ บริการ Account, Room และ Booking ใช้ PostgreSQL ฐานเดียวกัน แต่รับผิดชอบการเขียนตารางของตนเอง อ่านข้อมูลข้ามบริการได้เมื่อจำเป็น เช่น ตรวจเจ้าของสัตว์หรือคำนวณห้องว่าง
 
-## Shared conventions
+- ข้อมูลทั่วไปส่งเป็น JSON ใช้ชื่อฟิลด์แบบ camelCase และส่ง ID เป็นสตริง วันที่ใช้ `YYYY-MM-DD` และเวลาจริงใช้ ISO 8601
+- เส้นทางที่ต้องเข้าสู่ระบบใช้ `Authorization: Bearer <token>` แต่ละบริการตรวจบทบาท สถานะบัญชี และความเป็นเจ้าของจากฐานข้อมูลตามกรณี
+- ผลสำเร็จทั่วไปเป็น `{"data": ...}` ข้อผิดพลาดเป็น `{"message": "..."}` รหัสที่ใช้บ่อยคือ `201` สร้างสำเร็จ, `204` สำเร็จโดยไม่มีเนื้อหา, `400` ข้อมูลไม่ถูกต้อง, `401` ยังไม่ได้ยืนยันตัวตน, `403` ไม่มีสิทธิ์, `404` ไม่พบข้อมูล และ `409` สถานะขัดกับเงื่อนไข
+- แต่ละบริการมี `GET /health` ภายใน Compose จำนวนเงินใช้หน่วยบาทและคำนวณจากราคาฝั่งเซิร์ฟเวอร์
 
-- JSON request/response bodies; camelCase field names.
-- Database IDs are generated INTEGER primary keys. Serialize them as opaque strings at the HTTP boundary; validate/convert incoming IDs before parameterized queries.
-- Dates: `YYYY-MM-DD`. Timestamps: ISO 8601. Check-out must be after check-in.
-- Currency: THB. Store database money as exact decimal values or integer satang; never trust a total sent by the browser.
-- Authentication: `Authorization: Bearer <token>`. Account owns token issuance; each service validates it and enforces roles/ownership.
-- Success: `{"data": ...}`. Error: `{"message": "A useful explanation"}`.
-- Use 201 for creation; 200 for normal success; 204 for successful deletion; 400 invalid input; 401 unauthenticated; 403 forbidden; 404 missing; 409 conflicting state.
-- Each service exposes `GET /health`.
-- All three services connect to the shared `pawinn` database. The SQL already defines matching integer PK/FK types across the shared tables; API IDs remain strings at the HTTP boundary.
-- Services primarily write their own tables. Shared reads/joins are allowed for ownership, availability and prices; internal HTTP lookups are optional rather than required.
-- The frontend calls these APIs on the same origin through Nginx.
+## Account
 
-## Member 2: account
-
-| Method/path | Behavior |
+| เส้นทาง | การทำงาน |
 | --- | --- |
-| POST /api/auth/register | Accept name, email, password and a required contact phone number; create CUSTOMER only; return token and public user |
-| POST /api/auth/login | Accept email/password; return token and public user |
-| GET /api/users/me | Return the signed-in user |
-| PATCH /api/users/me | Customer adds or updates their emergency contact phone |
-| GET /api/pets | Return the customer's pets |
-| GET /api/pets/:id | Return an owned pet; booking can verify ownership directly against the shared pets table |
-| POST /api/pets | Create an owned pet |
-| PATCH /api/pets/:id | Update an owned pet |
-| DELETE /api/pets/:id | Delete an owned pet only when no booking references it; preserve booking history |
+| `POST /api/auth/register` | สมัครบัญชี Customer ด้วยชื่อ อีเมล รหัสผ่าน และเบอร์โทรศัพท์ |
+| `POST /api/auth/login` | เข้าสู่ระบบและคืน `{token, user}` ภายใน `data` เช่นเดียวกับการสมัครสำเร็จ |
+| `GET /api/users/me` | อ่านข้อมูลบัญชีที่เข้าสู่ระบบ |
+| `PATCH /api/users/me` | เพิ่มหรือแก้เบอร์โทรศัพท์ฉุกเฉินของลูกค้า |
+| `GET /api/pets` | แสดงสัตว์ที่ใช้งานอยู่ของลูกค้า เพิ่ม `?includeArchived=true` เพื่อรวมโปรไฟล์ที่เก็บถาวร |
+| `GET /api/pets/:id` | อ่านโปรไฟล์สัตว์ของตน |
+| `POST /api/pets` | เพิ่มโปรไฟล์สัตว์ |
+| `PATCH /api/pets/:id` | แก้โปรไฟล์สัตว์ |
+| `PATCH /api/pets/:id/archive` | ส่ง `{archived: true}` เพื่อเก็บถาวร หรือ `{archived: false}` เพื่อกู้คืน |
+| `DELETE /api/pets/:id` | ลบถาวรได้เมื่อสัตว์ยังไม่มีประวัติจอง |
 
+Account ออก JWT แบบ HS256 อายุหนึ่งชั่วโมง โดยใช้ issuer `pawinn-account`, audience `pawinn` และ ID ผู้ใช้ใน `sub` ข้อมูลผู้ใช้ที่ส่งกลับมี `id`, `name`, `email`, `phone` และ `role` บัญชี Staff สร้างตาม [ขั้นตอนใน README](../README.md#set-up-staff-access)
 
-Account issues an HS256 JWT with a one-hour expiry, issuer `pawinn-account`, audience `pawinn` and the string user ID in `sub`. Use `Authorization: Bearer <token>` for protected routes. A successful login or registration returns `{data: {token, user}}`. Account checks the current database role rather than relying solely on the token claim. Foreign and missing pets return 404; a referenced pet deletion returns 409.
+โปรไฟล์มี `id`, `ownerId`, `name`, `species`, `breed`, `birthDate`, `notes` และ `archivedAt` รายการสัตว์มี `bookingState` เป็น `NONE`, `ACTIVE` หรือ `HISTORY` สัตว์ที่มีการกันห้องที่ยังไม่หมดอายุ มีนัดยืนยัน หรือกำลังพัก เก็บถาวรไม่ได้ เมื่อทุกรายการสิ้นสุดแล้ว เก็บถาวรได้โดยยังดูประวัติเดิม และต้องกู้คืนก่อนจองครั้งใหม่
 
-Public user: `{id, name, email, phone, role}`; never return password hashes.
-Pet: `{id, ownerId, name, species, breed, birthDate, notes}`.
-Roles: CUSTOMER, STAFF. Species: Dog, Cat.
-Account, Room and Booking check the current account for protected requests. Staff accounts are created from the Account container, and public registration creates customers only.
-Account and booking owners coordinate pets/bookings foreign keys and active-booking checks before changing a booked pet's species. A normal FK prevents deleting a referenced pet; reject that deletion rather than cascading away booking history.
+## Room
 
-## Member 3: room
-
-| Method/path | Behavior |
+| เส้นทาง | การทำงาน |
 | --- | --- |
-| GET /api/room-types | Return descriptions, compatible species and base prices |
-| GET /api/rooms | Return room inventory; support optional roomTypeId and active filters |
-| GET /api/rooms/inventory | Staff lists each room's reservationStatus (RESERVED, HELD, or null) and holdExpiresAt for payment holds. |
-| POST /api/rooms/:id/closures | Staff schedules a temporary closure with start and reopen dates in Bangkok time. Start must be at least tomorrow. Existing confirmed stays and unexpired holds, including the checkout date, block the closure. |
-| DELETE /api/rooms/:id/closures/:closureId | Staff removes a temporary closure. |
-| PATCH /api/rooms/:id | Staff changes active/inactive status indefinitely. |
+| `GET /api/room-types` | ดูประเภทห้อง รายละเอียด ชนิดสัตว์ และราคาต่อคืน |
+| `GET /api/rooms` | ดูรายการห้อง กรองด้วย `roomTypeId` และ `active` ได้ |
+| `GET /api/rooms/inventory` | Staff ดูห้อง ช่วงปิด และรายการที่กันห้องอยู่ |
+| `POST /api/rooms/:id/closures` | Staff ส่ง `start` และ `reopen` เพื่อกำหนดช่วงปิดตามเวลาไทย เริ่มได้ตั้งแต่วันพรุ่งนี้ |
+| `DELETE /api/rooms/:id/closures/:closureId` | Staff ยกเลิกช่วงปิดห้อง |
+| `PATCH /api/rooms/:id` | Staff เปิดหรือปิดใช้งานห้องแบบไม่กำหนดวันด้วย `isActive` |
 
-Room type: `{id, name, description, species, pricePerNight}`.
-Room: `{id, roomTypeId, roomNumber, isActive}`.
-Start with seed SQL for inventory; add more management endpoints only if the team needs them.
-Deactivation returns 409 when a room has a current or upcoming reservation. All three types share the agreed inventory target of five physical rooms each (15 total).
+Room inventory แสดง `reservationStatus` เป็น `RESERVED`, `HELD` หรือ `null` พร้อม `holdExpiresAt` สำหรับการกันห้อง และ `reservationBookingId`, `reservationGuestName`, `reservationPetName` สำหรับรายการที่แสดง ข้อมูลการจองส่วนนี้เปิดให้ Staff เท่านั้น การตั้งช่วงปิดที่ทับรายการยืนยันหรือการกันห้องที่ยังไม่หมดอายุ รวมถึงวันรับกลับของรายการเดิม จะได้ `409` การปิดใช้งานห้องที่ยังมีนัดปัจจุบันหรือในอนาคตก็ได้ `409`
 
-## Member 4: booking
+## Booking
 
-| Method/path | Behavior |
+| เส้นทาง | การทำงาน |
 | --- | --- |
-| GET /api/availability?start=...&end=... | Return `[{roomTypeId, available}]`; optionally filter species |
-| POST /api/bookings | Accept petId, roomTypeId, start, end, and optional specialCare; choose an available physical room and calculate the price |
-| GET /api/bookings | Customers see their own; staff can see all; support optional petId/status filters |
-| GET /api/bookings/:id | Return an owned booking, or any booking for staff, including timeline and cancellation state |
-| DELETE /api/bookings/:id/hold | Customer cancels their unpaid hold and releases the room immediately |
-| PATCH /api/bookings/:id/hold | Edit a customer’s unpaid hold with the same fields as reservation; keep the reference and original expiry |
-| POST /api/bookings/:id/checkout | Accept outcome SUCCESS or FAILED and a payment attempt ID; simulate payment, safely handle retries |
-| POST /api/bookings/:id/cancellations | Accept reason; create a customer request for an eligible booking |
-| GET /api/cancellations | Staff lists requests; support optional status filter |
-| PATCH /api/cancellations/:id | Staff submits decision APPROVED or DECLINED plus notes |
-| GET /api/bookings/:id/reschedules/quote | Quote new dates with `start` and `end`; returns original total, new total and difference |
-| POST /api/bookings/:id/reschedules | Customer submits `start`, `end`, `reason` and the quoted `confirmedTotal` |
-| PATCH /api/bookings/:id/reschedules/:requestId | Staff approves or declines with a review note |
-| POST /api/bookings/:id/updates | Staff posts an update for a confirmed stay using multipart form data |
-| GET /api/bookings/updates | Customer reads their own quick updates and daily reports, newest first, with an optional `before` cursor |
-| GET /api/bookings/updates/:id/photo | Booking owner fetches the private image |
-| GET /api/bookings/:id/care | Staff or owner reads the stay’s Bangkok calendar, including missing reports |
-| PATCH /api/bookings/:id/care/arrival or /pickup | Staff records actual arrival from 12:30 until midnight on the scheduled check-in date in Bangkok (`at` ISO timestamp, defaults to now). Actual pickup follows recorded arrival and completes the stay. |
-| PUT /api/bookings/:id/care/days/:date/report | Staff publishes or corrects a daily report; multipart `message` and `photo` fields |
-| POST /api/bookings/:id/care/days/:date/events | Staff records a care event immediately |
-| PATCH /api/bookings/:id/care/days/:date/events/:eventId | Staff corrects a care event |
-| GET /api/bookings/:id/care/photos/:photoId | Owner or staff loads the private report image; only staff can read superseded photos |
+| `GET /api/availability?start=...&end=...` | คืนจำนวนห้องว่างแยกตามประเภท กรองด้วย `species` ได้ |
+| `POST /api/bookings` | รับ `petId`, `roomTypeId`, `start`, `end` และ `specialCare` จากนั้นเลือกห้องจริงและคำนวณราคา |
+| `GET /api/bookings` | Customer ดูรายการของตน Staff ดูรายการที่มีสิทธิ์ กรองด้วย `petId` หรือ `status` ได้ |
+| `GET /api/bookings/:id` | ดูรายละเอียด เลขห้อง ประวัติ และคำขอเปลี่ยนแปลง |
+| `PATCH /api/bookings/:id/hold` | แก้รายละเอียดการกันห้องก่อนจ่าย โดยใช้เลขจองและเวลาหมดอายุเดิม |
+| `DELETE /api/bookings/:id/hold` | ยกเลิกการกันห้องที่ยังไม่ได้ชำระ |
+| `POST /api/bookings/:id/checkout` | จำลองชำระเงินด้วย `outcome` และ `attemptId` |
+| `POST /api/bookings/:id/cancellations` | ลูกค้าส่งเหตุผลขอยกเลิก |
+| `GET /api/cancellations` | Staff ดูคำขอยกเลิก กรองด้วยสถานะได้ |
+| `PATCH /api/cancellations/:id` | Staff อนุมัติหรือปฏิเสธคำขอ |
+| `GET /api/bookings/:id/reschedules/quote` | คำนวณราคาเดิม ราคาใหม่ และส่วนต่างจาก `start` กับ `end` |
+| `POST /api/bookings/:id/reschedules` | ลูกค้าส่งวันใหม่ เหตุผล และยอดที่ยืนยันผ่าน `confirmedTotal` |
+| `PATCH /api/bookings/:id/reschedules/:requestId` | Staff อนุมัติหรือปฏิเสธการเปลี่ยนวัน |
+| `GET /api/bookings/live` | ส่งสัญญาณการเปลี่ยนแปลงผ่าน Server-Sent Events (SSE) ให้หน้าเว็บโหลดข้อมูลล่าสุด |
+| `POST /api/bookings/:id/updates` | Staff ส่งข้อความหรือรูปอัปเดตให้ลูกค้าผ่าน multipart form |
+| `GET /api/bookings/updates` | ลูกค้าดูรายงานและข้อความของตน เรียงจากใหม่ไปเก่า |
+| `GET /api/bookings/updates/:id/photo` | เจ้าของรายการเปิดรูปจากข้อความอัปเดต |
+| `GET /api/bookings/:id/care` | เจ้าของหรือ Staff เปิดประวัติการดูแลรายวันตามเวลากรุงเทพฯ |
+| `PATCH /api/bookings/:id/care/arrival` | Staff บันทึกเวลามาถึงผ่าน `at` หากไม่ระบุจะใช้เวลาปัจจุบัน |
+| `PATCH /api/bookings/:id/complete` | เส้นทางเดิมคืนข้อมูลรายการที่เสร็จแล้ว หากยังไม่เสร็จให้บันทึกรับกลับผ่าน Stay care |
+| `PATCH /api/bookings/:id/care/pickup` | Staff บันทึกรับกลับหลังมีเวลามาถึงและปิดการเข้าพัก |
+| `PUT /api/bookings/:id/care/days/:date/report` | Staff เผยแพร่หรือแก้รายงานด้วย multipart `message` และ `photo` |
+| `POST /api/bookings/:id/care/days/:date/events` | Staff บันทึกเหตุการณ์การดูแล |
+| `PATCH /api/bookings/:id/care/days/:date/events/:eventId` | Staff แก้บันทึกการดูแล |
+| `GET /api/bookings/:id/care/photos/:photoId` | เจ้าของหรือ Staff เปิดรูปจากรายงาน เฉพาะ Staff เปิดรูปที่ถูกแทนที่ได้ |
 
-Booking response: `{id, userId, petId, roomId, roomTypeId, start, end, nightlyRate, total, status, paymentStatus, refundStatus, createdAt}`; responses also include room number, room name, pet name, customer name, specialCare, hold expiry in epoch milliseconds, logs and the latest cancellation and reschedule. The reschedule includes its ID, status, original and requested dates, reason, and staff note.
-Booking statuses: PENDING, CONFIRMED, CANCELLED, COMPLETED.
-Payment statuses: UNPAID, SUCCESS, FAILED.
-Cancellation statuses: PENDING, APPROVED, DECLINED.
-Refund statuses: NOT_REQUESTED, PENDING, SUCCESS, FAILED.
+- สถานะการจองคือ `PENDING`, `CONFIRMED`, `CANCELLED` และ `COMPLETED` การกันห้องมีอายุ 2 นาที ลูกค้าลองชำระซ้ำได้ก่อนหมดเวลา การส่งคำขอซ้ำหลังชำระหรือคืนเงินสำเร็จจะไม่คิดเงินซ้ำ
+- ระหว่างรอคำขอเปลี่ยนวัน ระบบเก็บห้องและวันเดิมไว้ เมื่ออนุมัติจะตรวจห้องเดิมอีกครั้ง หากช่วงใหม่ใช้ได้จึงปรับวันและยอดจำลอง การอนุมัติยกเลิกจะคืนเงินจำลองและปล่อยห้อง ส่วนการปฏิเสธคำขอต้องระบุเหตุผล
+- เริ่มเช็กอินเวลา 12:30 น. ตามเวลากรุงเทพฯ หากไม่มาภายในวันแรก ระบบยกเลิกแบบ No-show ปล่อยห้องโดยไม่คืนเงิน และแสดงคำขอที่ค้างเป็น `EXPIRED` หากรับกลับหลัง 12:00 น. ของวันนัด ระบบคิดค่าธรรมเนียมจำลอง 100 บาทต่อชั่วโมงที่เริ่มแล้ว
+- คำแนะนำการดูแลและข้อความอัปเดตมีได้ถึง 2,000 ตัวอักษร ข้อความอัปเดตรองรับรูป JPEG, PNG หรือ WebP หนึ่งรูปขนาดไม่เกิน 2 MiB รายงานประจำวันต้องมีรูปเมื่อเผยแพร่ครั้งแรก ผลจากรายการอัปเดตคืน `{updates, nextBefore}` ใช้ `nextBefore` เป็นค่า `before` เพื่ออ่านหน้าถัดไป
+- เมื่อแก้รายงานหรือเหตุการณ์ ระบบเก็บค่าก่อนแก้ ผู้แก้ และเวลาแก้ไว้ ลูกค้ายังเปิดประวัติหลังรับสัตว์กลับได้
 
-Confirmed bookings with no arrival recorded by the end of check-in day in Bangkok become CANCELLED without a refund. Their open change requests appear as EXPIRED. Actual pickup completes the stay and records a separate simulated THB 100 charge per started hour after noon on the checkout date. Booking details include checkInOpensAt, noShowAt, latePickupFee, totalWithFees, pickupDeadline, and latePickupHourlyRate.
-
-Pending reservations hold inventory for 2 minutes, then expire to CANCELLED if unpaid. Reject overlapping bookings for a room or pet. Failed payment can be retried before expiry. Repeated successful checkout/review must not charge/refund twice. Approved cancellation records a full mock refund for a paid booking and releases the room; declined requests keep it confirmed.
-
-Customers can request a new check-in and/or check-out for an upcoming confirmed stay. Quotes use the booked nightly rate and customers must confirm the new total. The original room and dates remain reserved while a request is pending. Approval rechecks that same physical room, ignores the booking’s own occupied nights, then updates dates, total and any simulated adjustment in one transaction. The booking reference stays the same. A conflict leaves the booking and request unchanged. Declining either type of change request requires a reason.
-
-Special-care instructions are optional plain text up to 2,000 characters. Staff updates accept a message of up to 2,000 characters, one JPEG, PNG, or WebP photo up to 2 MiB, or both. The feed returns `{updates, nextBefore}`. Pass `nextBefore` as the next request's `before` value. Each entry includes `id`, `kind` (`update` or `report`), `bookingId`, `petName`, `message`, `createdAt`, and `hasPhoto`. Daily reports also include `reportDate` and the first current `photoId`, which the client can load using the booking's care photo endpoint. Photo requests require the same customer bearer token as the feed. Photos are stored in PostgreSQL and served with caching disabled.
-
-Daily care is separate from the informal update feed. Daily reports require a description and at least one photo on first publication. Events have Bangkok local `time`, `careType`, `action`, `observation` and `status` (`PERFORMED` or `NOT_PERFORMED`). When care was not performed, `reason` and `followUp` are required. Staff corrections retain prior values, the editor and the edit time. Customer history stays available after pickup.
-
-## Database mapping and fixtures
-
-The schema and demo data are implemented under `database/`; run the [database setup guide](../database/README.md). SQL uses snake_case; APIs keep the camelCase shapes above. Map `user_id` to user `id`, `full_name` to `name`, `care_notes` to `notes`, and booking `check_in_date`/`check_out_date`/`total_price` to `start`/`end`/`total`. Obtain a booking's `roomTypeId` by joining rooms. Never return password hashes.
-
-The sample accounts use public demo password `PawInnDemo123!`, stored as bcrypt hashes. Account verifies the bcrypt password at sign-in. Booking hold expiry is derived from `created_at + 2 minutes`; cancel expired unpaid PENDING rows before they continue blocking availability. The Booking API expires holds as part of availability and booking requests.
-
-## First integration example
-
-A customer signs in, loads their pets, browses room types, asks booking for availability, creates a reservation, completes mock checkout and reads booking history. Then the customer requests cancellation and staff reviews it.
-
-Only an isolated test deployment enables fixture accounts. In normal operation, create customer accounts through signup and staff accounts with the local Account command described in the [setup guide](../README.md#set-up-staff-access).
+ดู [วิธีติดตั้งและข้อมูลตัวอย่าง](../README.md) และ [คู่มือฐานข้อมูล](../database/README.md)
