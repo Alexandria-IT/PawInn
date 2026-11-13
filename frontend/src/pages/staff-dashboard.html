@@ -155,7 +155,7 @@
                       <p class="font-semibold" x-text="booking.petName"></p>
                       <p
                         class="text-[10px] muted mt-1"
-                        x-text="booking.id+' · '+booking.roomName"
+                        x-text="'#'+booking.id+' · '+booking.roomName+(booking.roomNumber ? ' · Room '+booking.roomNumber : '')"
                       ></p>
                     </td>
                     <td x-text="booking.customerName"></td>
