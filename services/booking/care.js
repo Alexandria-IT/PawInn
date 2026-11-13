@@ -245,6 +245,9 @@ async function saveAttendance(db, booking, actor, kind, at, supplied, log) {
   if (!pickup) {
     if (date !== booking.start || today() !== booking.start)
       fail(409, "Record arrival on the first day of the booking (Bangkok time).");
+    const opensAt = Date.parse(`${booking.start}T${booking.checkInOpensAt}:00+07:00`);
+    if (+at < opensAt)
+      fail(409, `Check-in opens at ${booking.checkInOpensAt} Bangkok time.`);
     const { rowCount } = await db.query(
       "SELECT 1 FROM bookings WHERE room_id=$1 AND booking_id<>$2 AND status='CONFIRMED' AND arrived_at IS NOT NULL AND picked_up_at IS NULL LIMIT 1",
       [booking.roomId, bookingId],
@@ -314,6 +317,7 @@ export function registerCareRoutes(router, pool, auth, { getBooking, log }) {
         pickedUpAt,
         noShowAt: booking.noShowAt,
         latePickupFee: booking.latePickupFee,
+        checkInOpensAt: booking.checkInOpensAt,
         pickupDeadline: booking.pickupDeadline,
         latePickupHourlyRate: booking.latePickupHourlyRate,
         days,

@@ -64,6 +64,8 @@ export default (isStaff) => ({
   careFormTrigger: null,
   careFormError: "",
   attendanceTime: "",
+  attendanceNow: "",
+  attendanceTimer: null,
   reportDate: "",
   reportMessage: "",
   quickUpdateMessage: "",
@@ -78,14 +80,14 @@ export default (isStaff) => ({
 
   // Allow arrival on check-in day and actual pickup up to now.
   attendanceBounds(kind) {
-    const now = bangkokInput();
+    const now = this.attendanceNow || bangkokInput();
     const start = this.careBooking?.start;
-    const end = this.careBooking?.end;
-    if (!start || !end) return { min: "", max: "", available: false };
+    const opensAt = this.careData?.checkInOpensAt;
+    if (!start || (kind === "arrival" && !opensAt)) return { min: "", max: "", available: false };
     const first = start + "T00:00";
     const arrived = this.careData?.arrivedAt;
-    const arrival = kind === "pickup" && arrived ? bangkokInput(arrived) : first;
-    const min = arrival > first ? arrival : first;
+    const min = kind === "arrival" ? start + "T" + opensAt
+      : arrived ? bangkokInput(arrived) : first;
     const last = start + "T23:59";
     const max = kind === "arrival" && now > last ? last : now;
     return { min, max, available: min <= max && (kind === "pickup" || now <= last) };
@@ -94,10 +96,20 @@ export default (isStaff) => ({
   // Clear booking-specific state when the modal or session changes.
   init() {
     this.$watch("$store.portal.user?.id", () => this.resetCare());
-    if (!this.isStaff) {
+    if (this.isStaff) {
+      // Refresh the time controls while the dialog is open, including at 12:30.
+      this.attendanceTimer = setInterval(() => {
+        if (this.careBooking) this.attendanceNow = bangkokInput();
+      }, 1000);
+    } else {
       this.$watch("detail?.id", () => this.syncCustomerBooking());
       this.syncCustomerBooking();
     }
+  },
+
+  // Stop the attendance clock when the component is removed.
+  destroy() {
+    clearInterval(this.attendanceTimer);
   },
 
   // Open the care tab when the customer follows a link from Pet Updates.
@@ -154,6 +166,7 @@ export default (isStaff) => ({
     if (this.careWriting || this.$store.portal.user?.role !== "STAFF") return;
     this.resetCare();
     this.careBooking = booking;
+    this.attendanceNow = bangkokInput();
     this.loadCare();
   },
 
@@ -243,6 +256,7 @@ export default (isStaff) => ({
   // Start entering an actual arrival or pickup time.
   openAttendance(kind) {
     const now = bangkokInput();
+    this.attendanceNow = now;
     const { min, max, available } = this.attendanceBounds(kind);
     if (!available) return;
     this.attendanceTime = now >= min && now <= max ? now : "";

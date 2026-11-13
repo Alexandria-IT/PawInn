@@ -9,7 +9,14 @@ import {
   text,
   holdMinutes,
 } from "../shared/runtime.js";
-import { hotelDateSql, pickupDeadline, latePickupHourlyRate, releaseNoShows, sweepNoShows } from "../shared/attendance.js";
+import {
+  checkInOpensAt,
+  hotelDateSql,
+  pickupDeadline,
+  latePickupHourlyRate,
+  releaseNoShows,
+  sweepNoShows,
+} from "../shared/attendance.js";
 import { registerUpdateRoutes } from "./updates.js";
 import { registerCareRoutes } from "./care.js";
 import { registerBookingEvents } from "./live.js";
@@ -48,6 +55,7 @@ const selection = `
     b.no_show_at AS "noShowAt",
     b.late_pickup_fee::float8 AS "latePickupFee",
     (b.total_price + b.late_pickup_fee)::float8 AS "totalWithFees",
+    '${checkInOpensAt}' AS "checkInOpensAt",
     '${pickupDeadline}' AS "pickupDeadline",
     ${latePickupHourlyRate} AS "latePickupHourlyRate",
     b.status,

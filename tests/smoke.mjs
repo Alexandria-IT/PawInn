@@ -467,10 +467,21 @@ async function verifyBookings() {
 async function verifyAttendancePolicy(staff, customer, inventoryRoom) {
   const now = new Date().toISOString();
   const sameDayPath = "/api/bookings/3996/care";
-  assert.deepEqual((await request(sameDayPath, "GET", null, staff.token)).days, []);
+  const checkIn = await request(sameDayPath, "GET", null, staff.token);
+  assert.deepEqual(checkIn.days, []);
+  assert.equal(checkIn.checkInOpensAt, "12:30");
   await request(sameDayPath + "/pickup", "PATCH", { at: now }, staff.token, 409);
-  const arrival = await request(sameDayPath + "/arrival", "PATCH", { at: now }, staff.token);
-  assert.equal(arrival.arrivedAt, now);
+  const bangkok = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" });
+  const today = bangkok.format(new Date(now));
+  const opening = new Date(today + "T12:30:00+07:00");
+  const beforeOpening = new Date(Math.min(Date.parse(now), +opening - 1));
+  await request(sameDayPath + "/arrival", "PATCH", { at: beforeOpening.toISOString() }, staff.token, 409);
+  if (+opening <= Date.parse(now)) {
+    const arrival = await request(sameDayPath + "/arrival", "PATCH", { at: opening.toISOString() }, staff.token);
+    assert.equal(arrival.arrivedAt, opening.toISOString());
+  } else {
+    await request(sameDayPath + "/arrival", "PATCH", { at: opening.toISOString() }, staff.token, 400);
+  }
 
   const noShowPath = "/api/bookings/3998";
   await request(noShowPath + "/care/arrival", "PATCH", { at: now }, staff.token, 409);
@@ -484,8 +495,6 @@ async function verifyAttendancePolicy(staff, customer, inventoryRoom) {
   await request("/api/cancellations/" + missed.cancellation.id, "PATCH",
     { decision: "APPROVED" }, staff.token, 409);
 
-  const bangkok = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" });
-  const today = bangkok.format(new Date(now));
   const tomorrow = bangkok.format(new Date(Date.parse(now) + 86_400_000));
   const gardenAvailability = async () => {
     const rows = await request("/api/availability?start=" + today + "&end=" + tomorrow);

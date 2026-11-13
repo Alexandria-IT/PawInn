@@ -71,7 +71,7 @@
                 </div>
                 <div class="summary-line">
                   <span class="muted">Check-in</span
-                  ><span x-text="dateLabel(booking.start)"></span>
+                  ><span x-text="dateLabel(booking.start)+' · from '+booking.checkInOpensAt"></span>
                 </div>
                 <div class="summary-line">
                   <span class="muted">Check-out</span
@@ -215,7 +215,7 @@
                   <div class="mt-5 border-t border-stone-200 pt-3">
                     <div class="summary-line">
                       <span class="muted">Check-in</span
-                      ><span x-text="dateLabel(booking.start)"></span>
+                      ><span x-text="dateLabel(booking.start)+' · from '+booking.checkInOpensAt"></span>
                     </div>
                     <div class="summary-line">
                       <span class="muted">Check-out</span
@@ -239,7 +239,7 @@
                     </div>
                   </div>
                   <p class="notice mt-4">
-                    Arrive by the end of check-in day (Bangkok time). A missed arrival releases the room without a refund.
+                    Check-in opens at <span x-text="booking.checkInOpensAt"></span> (Bangkok time). Arrive before midnight on check-in day to keep your reservation. A missed arrival releases the room without a refund.
                     Pickup is due by noon on checkout day. Late pickup costs THB 100 per started hour.
                     Payments and fees are simulated.
                   </p>

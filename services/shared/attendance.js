@@ -1,5 +1,6 @@
 import { transaction } from "./runtime.js";
 
+export const checkInOpensAt = "12:30";
 export const pickupDeadline = "12:00";
 export const latePickupHourlyRate = 100;
 export const hotelDateSql = "(statement_timestamp() AT TIME ZONE 'Asia/Bangkok')::date";

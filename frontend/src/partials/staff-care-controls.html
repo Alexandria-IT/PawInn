@@ -72,7 +72,7 @@
 </div>
 
 <p class="text-sm muted mb-4" x-show="careData?.status === 'CONFIRMED' && !careData?.arrivedAt && !attendanceBounds('arrival').available">
-  Arrival can be recorded starting <span x-text="careDate(careBooking?.start)"></span> (Bangkok time).
+  Arrival can be recorded from <span x-text="careData?.checkInOpensAt"></span> on <span x-text="careDate(careBooking?.start)"></span> (Bangkok time).
 </p>
 <div class="border-y border-stone-200 py-4 mb-4" x-show="careForm">
   <h3
@@ -91,7 +91,7 @@
           <span class="text-xs muted">Choose an actual time in the past or now.</span>
         </label>
         <p class="text-sm muted" x-show="careForm === 'arrival'">
-          Record arrival on the check-in date. At midnight, unarrived bookings are cancelled without a refund.
+          Record arrival from <span x-text="careData?.checkInOpensAt"></span> on the check-in date (Bangkok time). At midnight, unarrived bookings are cancelled without a refund.
         </p>
         <p class="text-sm muted" x-show="careForm === 'pickup'">
           Pickup is due by <span x-text="careData?.pickupDeadline"></span> on the scheduled checkout date.

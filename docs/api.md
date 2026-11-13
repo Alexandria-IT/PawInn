@@ -76,7 +76,7 @@ Deactivation returns 409 when a room has a current or upcoming reservation. All 
 | GET /api/bookings/updates | Customer reads their own quick updates and daily reports, newest first, with an optional `before` cursor |
 | GET /api/bookings/updates/:id/photo | Booking owner fetches the private image |
 | GET /api/bookings/:id/care | Staff or owner reads the stay’s Bangkok calendar, including missing reports |
-| PATCH /api/bookings/:id/care/arrival or /pickup | Staff records actual arrival or pickup within the scheduled dates in Bangkok (`at` ISO timestamp; defaults to now). Pickup completes the stay. |
+| PATCH /api/bookings/:id/care/arrival or /pickup | Staff records actual arrival from 12:30 until midnight on the scheduled check-in date in Bangkok (`at` ISO timestamp, defaults to now). Actual pickup follows recorded arrival and completes the stay. |
 | PUT /api/bookings/:id/care/days/:date/report | Staff publishes or corrects a daily report; multipart `message` and `photo` fields |
 | POST /api/bookings/:id/care/days/:date/events | Staff records a care event immediately |
 | PATCH /api/bookings/:id/care/days/:date/events/:eventId | Staff corrects a care event |
@@ -88,7 +88,7 @@ Payment statuses: UNPAID, SUCCESS, FAILED.
 Cancellation statuses: PENDING, APPROVED, DECLINED.
 Refund statuses: NOT_REQUESTED, PENDING, SUCCESS, FAILED.
 
-Confirmed bookings with no arrival recorded by the end of check-in day in Bangkok become CANCELLED without a refund. Their open change requests appear as EXPIRED. Actual pickup completes the stay and records a separate simulated THB 100 charge per started hour after noon on the checkout date. Booking details include noShowAt, latePickupFee, totalWithFees, pickupDeadline, and latePickupHourlyRate.
+Confirmed bookings with no arrival recorded by the end of check-in day in Bangkok become CANCELLED without a refund. Their open change requests appear as EXPIRED. Actual pickup completes the stay and records a separate simulated THB 100 charge per started hour after noon on the checkout date. Booking details include checkInOpensAt, noShowAt, latePickupFee, totalWithFees, pickupDeadline, and latePickupHourlyRate.
 
 Pending reservations hold inventory for 2 minutes, then expire to CANCELLED if unpaid. Reject overlapping bookings for a room or pet. Failed payment can be retried before expiry. Repeated successful checkout/review must not charge/refund twice. Approved cancellation records a full mock refund for a paid booking and releases the room; declined requests keep it confirmed.
 
