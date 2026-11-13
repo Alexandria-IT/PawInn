@@ -24,8 +24,8 @@ export function createPool(env = process.env) {
   });
 }
 
-// Commit account changes and their audit entries together.
-export async function accountTransaction(pool, operation) {
+// Apply the schema upgrade atomically.
+async function accountTransaction(pool, operation) {
   const db = await pool.connect();
   try {
     await db.query("BEGIN");
@@ -40,14 +40,14 @@ export async function accountTransaction(pool, operation) {
   }
 }
 
-// Serialize schema upgrades and bootstrap attempts.
-export function lockAccountSchema(db) {
+// Serialize schema upgrades across Account instances.
+function lockAccountSchema(db) {
   return db.query("SELECT pg_advisory_xact_lock($1)", [accountSchemaLockId]);
 }
 
 // Prepare both new and existing databases before serving requests.
 export async function prepareAccount(pool) {
-  const schema = await readFile(new URL("./admin-schema.sql", import.meta.url), "utf8");
+  const schema = await readFile(new URL("./account-migration.sql", import.meta.url), "utf8");
   for (let attempt = 1; ; attempt++) {
     try {
       await accountTransaction(pool, async (db) => {
@@ -60,14 +60,6 @@ export async function prepareAccount(pool) {
       await delay(1000);
     }
   }
-}
-
-// Record the actor, affected account, and changed values.
-export function recordAccountAudit(db, actor, target, action, details) {
-  return db.query(
-    "INSERT INTO account_audit (actor_id,target_id,action,details) VALUES ($1,$2,$3,$4)",
-    [actor, target, action, details],
-  );
 }
 
 // Update an owned pet while checking active reservations.

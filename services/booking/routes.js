@@ -9,6 +9,7 @@ import {
   text,
   holdMinutes,
 } from "../shared/runtime.js";
+import { hotelDateSql, pickupDeadline, latePickupHourlyRate, releaseNoShows, sweepNoShows } from "../shared/attendance.js";
 import { registerUpdateRoutes } from "./updates.js";
 import { registerCareRoutes } from "./care.js";
 import { registerBookingEvents } from "./live.js";
@@ -44,6 +45,11 @@ const selection = `
     b.special_care AS "specialCare",
     b.arrived_at AS "arrivedAt",
     b.picked_up_at AS "pickedUpAt",
+    b.no_show_at AS "noShowAt",
+    b.late_pickup_fee::float8 AS "latePickupFee",
+    (b.total_price + b.late_pickup_fee)::float8 AS "totalWithFees",
+    '${pickupDeadline}' AS "pickupDeadline",
+    ${latePickupHourlyRate} AS "latePickupHourlyRate",
     b.status,
     b.created_at AS "createdAt",
     b.payment_status AS "paymentStatus",
@@ -67,7 +73,9 @@ const selection = `
   JOIN room_types t USING (room_type_id)
   LEFT JOIN LATERAL (
     SELECT json_build_object(
-      'id', cancellation_request_id::text, 'status', status, 'reason', reason, 'note', review_notes
+      'id', cancellation_request_id::text,
+      'status', CASE WHEN b.no_show_at IS NOT NULL AND status='PENDING' THEN 'EXPIRED' ELSE status END,
+      'reason', reason, 'note', review_notes
     ) AS item
     FROM cancellation_requests
     WHERE booking_id = b.booking_id
@@ -76,7 +84,9 @@ const selection = `
   ) c ON true
   LEFT JOIN LATERAL (
     SELECT json_build_object(
-      'id', reschedule_request_id::text, 'status', status, 'reason', reason, 'note', review_notes,
+      'id', reschedule_request_id::text,
+      'status', CASE WHEN b.no_show_at IS NOT NULL AND status='PENDING' THEN 'EXPIRED' ELSE status END,
+      'reason', reason, 'note', review_notes,
       'originalStart', original_check_in::text, 'originalEnd', original_check_out::text,
       'start', requested_check_in::text, 'end', requested_check_out::text,
       'originalTotal', original_total, 'newTotal', new_total,
@@ -97,10 +107,12 @@ async function log(db, booking, user, action, details) {
 }
 // Reclaim unpaid holds and write the expiry audit entry in the same transaction.
 async function expire(db) {
+  await releaseNoShows(db);
   await db.query(`WITH expired AS (
     UPDATE bookings
     SET status = 'CANCELLED'
-    WHERE status = 'PENDING' AND created_at <= now() - interval '${holdMinutes} minutes'
+    WHERE status = 'PENDING' AND (created_at <= now() - interval '${holdMinutes} minutes'
+      OR check_in_date < ${hotelDateSql})
     RETURNING booking_id
   )
   INSERT INTO booking_logs (booking_id, action, details)
@@ -146,7 +158,8 @@ async function availableRoom(
        AND NOT EXISTS (
          SELECT 1 FROM bookings b
          WHERE b.room_id=r.room_id AND b.status IN ('PENDING','CONFIRMED')
-           AND b.check_in_date<$3::date AND b.check_out_date>$2::date
+           AND ((b.check_in_date<$3::date AND b.check_out_date>$2::date)
+             OR ($2::date=${hotelDateSql} AND b.arrived_at IS NOT NULL AND b.picked_up_at IS NULL))
            AND ($4::int IS NULL OR b.booking_id<>$4)
        )
      ORDER BY (r.room_id=$5::int) DESC NULLS LAST, r.room_id
@@ -218,7 +231,8 @@ export function routes(router, pool, auth) {
        FROM room_types t LEFT JOIN rooms r ON r.room_type_id=t.room_type_id AND r.is_active
          AND ${noClosure("$1", "$2")}
          AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.room_id=r.room_id AND b.status IN ('PENDING','CONFIRMED')
-           AND b.check_in_date<$2::date AND b.check_out_date>$1::date)
+           AND ((b.check_in_date<$2::date AND b.check_out_date>$1::date)
+             OR ($1::date=${hotelDateSql} AND b.arrived_at IS NOT NULL AND b.picked_up_at IS NULL)))
        WHERE ($3::text IS NULL OR t.species=$3) GROUP BY t.room_type_id ORDER BY t.room_type_id`,
         [start, end, species ?? null],
       );
@@ -294,6 +308,7 @@ export function routes(router, pool, auth) {
           db,
         ) => {
           await expire(db);
+          stay(start, end);
           const {
             rows: [pet],
           } = await db.query(
@@ -514,18 +529,21 @@ export function routes(router, pool, auth) {
       const status = req.query.status ?? null;
       if (
         status !== null &&
-        !["PENDING", "APPROVED", "DECLINED"].includes(status)
+        !["PENDING", "APPROVED", "DECLINED", "EXPIRED"].includes(status)
       )
         fail(400, "Unknown cancellation status.");
+      await sweepNoShows(pool);
       const { rows } = await pool.query(
         `SELECT cancellation.cancellation_request_id::text AS id,
-        cancellation.booking_id::text AS "bookingId", cancellation.reason, cancellation.status,
+        cancellation.booking_id::text AS "bookingId", cancellation.reason, effective.status,
         cancellation.requested_at AS "requestedAt", cancellation.reviewed_at AS "reviewedAt",
         cancellation.review_notes AS notes
       FROM cancellation_requests cancellation
       JOIN bookings b USING (booking_id)
       JOIN users u ON u.user_id = b.user_id
-      WHERE ($1::text IS NULL OR cancellation.status=$1) AND ${visibleCustomer} ORDER BY cancellation.cancellation_request_id DESC`,
+      CROSS JOIN LATERAL (SELECT CASE WHEN b.no_show_at IS NOT NULL AND cancellation.status='PENDING'
+        THEN 'EXPIRED' ELSE cancellation.status END AS status) effective
+      WHERE ($1::text IS NULL OR effective.status=$1) AND ${visibleCustomer} ORDER BY cancellation.cancellation_request_id DESC`,
         [status],
       );
       send(res, rows);
@@ -687,6 +705,7 @@ export function routes(router, pool, auth) {
           );
           if (!change) fail(404, "Reschedule request not found.");
           if (change.status === decision) return booking;
+          if (booking.noShowAt) fail(409, "This request expired when the booking was marked as a no-show.");
           if (change.status !== "PENDING")
             fail(409, "This request has already been reviewed.");
 

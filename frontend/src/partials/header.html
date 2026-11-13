@@ -143,9 +143,6 @@
             x-show="$store.portal.user?.role==='STAFF'"
             >Staff dashboard</a
           >
-          <a href="/pages/admin.html" x-show="$store.portal.user?.role==='ADMIN'"
-            >Admin portal</a
-          >
           <button @click="signOut()">Sign out</button>
         </div>
       </div>
@@ -199,8 +196,6 @@
       href="/pages/staff-dashboard.html"
       x-show="$store.portal.user?.role==='STAFF'"
       >Staff dashboard</a
-    ><a href="/pages/admin.html" x-show="$store.portal.user?.role==='ADMIN'"
-      >Admin portal</a
     ><button
       class="btn btn-outline mt-2"
       x-show="$store.portal.user"

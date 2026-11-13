@@ -1,5 +1,7 @@
 # PawInn requirements implementation plan
 
+This is a historical plan and test record. The account administration feature described below was subsequently retired. See the [current setup guide](../../../README.md#set-up-staff-access) for staff provisioning.
+
 **Goal:** Close the gaps in the PawInn User Story document in the existing Docker stack.
 
 **Architecture:** Account owns user status, Admin actions and their audit history. Booking owns actual stay times, dated care history, and simulated price adjustments. The Alpine pages continue using the same authenticated API through Nginx.

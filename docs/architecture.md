@@ -4,13 +4,13 @@ The browser uses one origin served by Nginx. The frontend renders the HTML/Tailw
 
 | Paths | Service | Database responsibility |
 | --- | --- | --- |
-| /api/auth, /api/users, /api/pets, /api/admin | Account | Users, credentials, pet profiles, and account audit history |
+| /api/auth, /api/users, /api/pets | Account | Users, credentials, and pet profiles |
 | /api/room-types, /api/rooms | Room | Catalog and inventory |
 | /api/availability, /api/bookings, /api/cancellations | Booking | Holds, simulated payments, change requests, attendance and care records |
 
 Each service has a database-aware /health endpoint. Only the frontend and the local PostgreSQL port are published on loopback by default. The three services use one PostgreSQL database and query shared related records where needed. This reduces course-project complexity; schema changes still require coordination.
 
-Account issues expiring bearer tokens; the services verify issuer, audience and signature, then check the current role, account status and session version from PostgreSQL. Pet access and customer booking and care access are scoped to the signed-in owner. The first Admin is created locally; Admins create and manage staff accounts in the portal. Fixture accounts are disabled on a normal deployment.
+Account issues expiring bearer tokens; the services verify issuer, audience and signature, then check the current role, account status and session version from PostgreSQL. Pet access and customer booking and care access are scoped to the signed-in owner. Customers register in the portal and operators create staff accounts from the Account container. Fixture accounts are disabled on a normal deployment.
 
 Booking allocates available physical rooms and calculates prices in PostgreSQL. An advisory transaction lock serializes reservation and inventory changes for this small installation; exclusion constraints reject overlapping active holds even if another writer bypasses service logic. The service expires old holds before serving availability and booking operations. Checkout and refund actions are simulated and persist with their audit logs.
 

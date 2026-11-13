@@ -44,7 +44,7 @@ export async function verifyCare({ request, staff, customer, foreign, booking, o
   const calendarDate = (offset) => bangkokDate.format(new Date(now - offset * 86_400_000));
   const [arrivalDay, middleDay, pickupDay] = [calendarDate(3), calendarDate(2), calendarDate(1)];
   const arrival = `${arrivalDay}T00:30:00+07:00`;
-  const pickup = `${pickupDay}T00:30:00+07:00`;
+  const pickup = `${pickupDay}T12:00:00+07:00`;
   const reportPath = (date) => `${path}/days/${date}/report`;
   const eventPath = `${path}/days/${arrivalDay}/events`;
   const png = Buffer.from(
@@ -84,11 +84,9 @@ export async function verifyCare({ request, staff, customer, foreign, booking, o
     }
   }
 
-  assert.deepEqual((await request(path, "GET", null, customerToken)).days, []);
+  assert.equal((await request(path, "GET", null, customerToken)).arrivedAt, new Date(arrival).toISOString());
   await request(path, "GET", null, foreignToken, 404);
   await request(`${path}/arrival`, "PATCH", { at: arrival }, customerToken, 403);
-  await request(`${path}/pickup`, "PATCH", { at: pickup }, staffToken, 409);
-  await request(path + "/arrival", "PATCH", { at: calendarDate(4) + "T23:59:00+07:00" }, staffToken, 409);
   assert.equal(
     (await request(`${path}/arrival`, "PATCH", { at: arrival }, staffToken)).arrivedAt,
     new Date(arrival).toISOString(),
@@ -158,9 +156,10 @@ export async function verifyCare({ request, staff, customer, foreign, booking, o
 
   await request(`${path}/days/${middleDay}/events`, "POST", firstEvent, staffToken, 201);
   await request(`${path}/pickup`, "PATCH", { at: arrival }, staffToken, 409);
-  await request(path + "/pickup", "PATCH", { at: calendarDate(0) + "T00:00:00+07:00" }, staffToken, 409);
+  await request(path + "/pickup", "PATCH", { at: new Date(now + 60_000).toISOString() }, staffToken, 400);
   const checkout = await request(`${path}/pickup`, "PATCH", { at: pickup }, staffToken);
   assert.equal(checkout.status, "COMPLETED");
+  assert.equal(checkout.latePickupFee, 0);
   assert.equal(checkout.pickedUpAt, new Date(pickup).toISOString());
   assert.equal((await request(`/api/bookings/${booking.id}`, "GET", null, customerToken)).status, "COMPLETED");
   await report(calendarDate(0), "After pickup", png, "image/png", 409);

@@ -106,13 +106,24 @@ END $$;
 
 ROLLBACK;
 
--- Historical stay for attendance tests. The disposable API suite records actual times.
+-- Historical stays for on-time pickup, missed arrival, and late pickup tests.
 WITH hotel AS (SELECT (now() AT TIME ZONE 'Asia/Bangkok')::date AS day)
 INSERT INTO bookings (booking_id, user_id, pet_id, room_id, check_in_date, check_out_date,
-    nightly_rate, total_price, status, created_at, payment_status, payment_reference, paid_at)
-SELECT 3999, 1001, 2001, 101, day - 3, day - 1, 650, 1300, 'CONFIRMED',
-    now() - interval '5 days', 'SUCCESS', 'TEST-CARE-3999', now() - interval '5 days'
-FROM hotel;
+    nightly_rate, total_price, status, created_at, payment_status, payment_reference, paid_at, arrived_at)
+SELECT fixture.booking_id, pets.owner_id, fixture.pet_id, fixture.room_id, day + fixture.start_offset, day + fixture.end_offset,
+    fixture.rate, fixture.rate * (fixture.end_offset - fixture.start_offset), 'CONFIRMED',
+    now() - interval '5 days', 'SUCCESS', 'TEST-CARE-' || fixture.booking_id, now() - interval '5 days',
+    CASE WHEN fixture.attended THEN ((day - 3) + time '00:30') AT TIME ZONE 'Asia/Bangkok' END
+FROM hotel CROSS JOIN (VALUES
+    (3999, 2001, 101, -3, -1, 650, TRUE),
+    (3998, 2002, 305, -3,  1, 750, FALSE),
+    (3997, 2003, 205, -3, -1, 950, TRUE),
+    (3996, 2004, 304,  0,  1, 750, FALSE)
+) AS fixture(booking_id, pet_id, room_id, start_offset, end_offset, rate, attended)
+JOIN pets ON pets.pet_id = fixture.pet_id;
+
+INSERT INTO cancellation_requests (booking_id, reason)
+VALUES (3998, 'Pending request on a missed stay');
 
 -- An expired hold must not protect inventory, even before its status is swept.
 UPDATE bookings SET created_at = now() - interval '3 minutes' WHERE booking_id = 3002;

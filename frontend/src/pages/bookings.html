@@ -90,7 +90,7 @@
                   <div class="text-right">
                     <p
                       class="text-lg font-semibold"
-                      x-text="money(booking.total)"
+                      x-text="money(booking.totalWithFees ?? booking.total)"
                     ></p>
                     <p
                       class="text-[10px] muted"
@@ -221,8 +221,21 @@
                 ><span x-text="dateLabel(detail.end)"></span>
               </div>
               <div class="summary-line border-t border-stone-200 mt-2">
-                <span>Total</span><strong x-text="money(detail.total)"></strong>
+                <span>Booking total</span><strong x-text="money(detail.total)"></strong>
               </div>
+              <template x-if="detail.latePickupFee > 0">
+                <div>
+                  <div class="summary-line">
+                    <span>Simulated late pickup charge</span><strong x-text="money(detail.latePickupFee)"></strong>
+                  </div>
+                  <div class="summary-line">
+                    <span>Total with fee</span><strong x-text="money(detail.totalWithFees)"></strong>
+                  </div>
+                </div>
+              </template>
+              <p x-show="detail.noShowAt" class="notice my-5">
+                Arrival was not recorded on check-in day. The room was released without a refund.
+              </p>
               <div x-show="detail.specialCare" class="notice my-5">
                 <p class="font-semibold mb-1">Special-care instructions</p>
                 <p

@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import { runService, transaction } from "../shared/runtime.js";
 import { routes } from "./routes.js";
 import { stopBookingEvents } from "./live.js";
+import { sweepNoShows } from "../shared/attendance.js";
 const startupConnectionErrors = new Set([
   "ECONNREFUSED",
   "ECONNRESET",
@@ -29,6 +30,7 @@ async function prepare(pool) {
     new URL("./pet-updates-schema.sql", import.meta.url),
     "utf8",
   );
+  const attendanceSchema = await readFile(new URL("../shared/attendance-schema.sql", import.meta.url), "utf8");
   const careSchema = await readFile(new URL("./care-schema.sql", import.meta.url), "utf8");
   const roomClosureSchema = await readFile(new URL("../shared/room-closures.sql", import.meta.url), "utf8");
   const liveSchema = await readFile(new URL("./live-schema.sql", import.meta.url), "utf8");
@@ -43,6 +45,7 @@ async function prepare(pool) {
           await db.query(roomClosureSchema);
           await db.query(rescheduleSchema);
           await db.query(updateSchema);
+          await db.query(attendanceSchema);
           await db.query(careSchema);
           await db.query(liveSchema);
         },
@@ -64,6 +67,14 @@ process.once("SIGINT", stopBookingEvents);
 
 await runService(import.meta.url, {
   prepare,
+  // Release rooms even when there is no browser traffic.
+  start(pool) {
+    const sweep = () => sweepNoShows(pool).catch((error) =>
+      console.error("Booking no-show sweep:", error.code || error.name));
+    sweep();
+    const timer = setInterval(sweep, 60_000);
+    return () => clearInterval(timer);
+  },
   express,
   pg,
   jwt,

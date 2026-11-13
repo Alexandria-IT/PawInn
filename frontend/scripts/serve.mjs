@@ -79,7 +79,7 @@ export function serve({
   bookingPort = Number(process.env.BOOKING_PORT || 3003),
 } = {}) {
   const apiRoutes = [
-    [/^\/api\/(auth|users|pets|admin)(\/|$)/, accountPort],
+    [/^\/api\/(auth|users|pets)(\/|$)/, accountPort],
     [/^\/api\/(room-types|rooms)(\/|$)/, roomPort],
     [/^\/api\/(availability|bookings|cancellations)(\/|$)/, bookingPort],
   ];

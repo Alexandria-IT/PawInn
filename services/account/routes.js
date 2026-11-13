@@ -3,7 +3,6 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { rateLimit } from "express-rate-limit";
 import { petFields, userFields, updatePet } from "./db.js";
-import { registerAdminRoutes } from "./admin.js";
 import { RequestError, fail, send, userDto, fields, clean, credentials, parseId } from "./http.js";
 
 const tokenOptions = { issuer: "pawinn-account", audience: "pawinn" };
@@ -123,7 +122,7 @@ export function accountRoutes(pool, secret, allowFixtures) {
       "SELECT " + userFields + " FROM users WHERE user_id=$1",
       [id],
     );
-    if (!user || user.account_status !== "ACTIVE" ||
+    if (!user || !["CUSTOMER", "STAFF"].includes(user.role) || user.account_status !== "ACTIVE" ||
         user.session_version !== version || fixtureBlocked(user.email))
       fail(401, "Sign in again to continue.");
     req.accountUser = user;
@@ -177,6 +176,7 @@ export function accountRoutes(pool, secret, allowFixtures) {
       if (
         !(await bcrypt.compare(password, user?.password_hash || dummyHash)) ||
         !user ||
+        !["CUSTOMER", "STAFF"].includes(user.role) ||
         user.account_status !== "ACTIVE" ||
         fixtureBlocked(user.email)
       ) {
@@ -200,7 +200,6 @@ export function accountRoutes(pool, secret, allowFixtures) {
     );
     send(res, userDto(user));
   });
-  registerAdminRoutes(router, pool, authenticate, { allowFixtures, fixtureBlocked });
   router.use("/pets", authenticate, customer);
   router.get(
     "/pets",

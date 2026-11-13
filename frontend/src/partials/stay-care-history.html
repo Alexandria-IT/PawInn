@@ -32,6 +32,9 @@
           <dd x-text="careData.pickedUpAt ? careTimestamp(careData.pickedUpAt) : 'Awaiting pickup record'"></dd>
         </div>
       </dl>
+      <p class="notice mb-4" x-show="careData.latePickupFee > 0">
+        Simulated late pickup charge of THB <span x-text="careData.latePickupFee.toFixed(2)"></span>.
+      </p>
       <p class="muted text-sm" x-show="!careData.days.length">No care history has been recorded for this stay yet.</p>
 
       <ol class="space-y-5">

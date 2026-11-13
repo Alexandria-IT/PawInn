@@ -29,17 +29,14 @@ Account, Room and Booking endpoints below are implemented. Update this file when
 | POST /api/pets | Create an owned pet |
 | PATCH /api/pets/:id | Update an owned pet |
 | DELETE /api/pets/:id | Delete an owned pet only when no booking references it; preserve booking history |
-| GET /api/admin/users | Admin searches by name/email and filters by role or status; supports `before` pagination |
-| POST /api/admin/users | Admin creates a staff account |
-| PATCH /api/admin/users/:userId | Admin grants or revokes staff access, or suspends/reactivates an account |
-| GET /api/admin/audit | Admin reads account changes with actor, target, details and time; supports `userId` and `before` |
+
 
 Account issues an HS256 JWT with a one-hour expiry, issuer `pawinn-account`, audience `pawinn` and the string user ID in `sub`. Use `Authorization: Bearer <token>` for protected routes. A successful login or registration returns `{data: {token, user}}`. Account checks the current database role rather than relying solely on the token claim. Foreign and missing pets return 404; a referenced pet deletion returns 409.
 
 Public user: `{id, name, email, phone, role}`; never return password hashes.
 Pet: `{id, ownerId, name, species, breed, birthDate, notes}`.
-Roles: CUSTOMER, STAFF, ADMIN. Species: Dog, Cat.
-Account state changes revoke existing sessions across Account, Room and Booking. Bootstrap the first Admin through the operator CLI; staff accounts are created by an Admin and public registration creates customers only.
+Roles: CUSTOMER, STAFF. Species: Dog, Cat.
+Account, Room and Booking check the current account for protected requests. Staff accounts are created from the Account container, and public registration creates customers only.
 Account and booking owners coordinate pets/bookings foreign keys and active-booking checks before changing a booked pet's species. A normal FK prevents deleting a referenced pet; reject that deletion rather than cascading away booking history.
 
 ## Member 3: room
@@ -91,6 +88,8 @@ Payment statuses: UNPAID, SUCCESS, FAILED.
 Cancellation statuses: PENDING, APPROVED, DECLINED.
 Refund statuses: NOT_REQUESTED, PENDING, SUCCESS, FAILED.
 
+Confirmed bookings with no arrival recorded by the end of check-in day in Bangkok become CANCELLED without a refund. Their open change requests appear as EXPIRED. Actual pickup completes the stay and records a separate simulated THB 100 charge per started hour after noon on the checkout date. Booking details include noShowAt, latePickupFee, totalWithFees, pickupDeadline, and latePickupHourlyRate.
+
 Pending reservations hold inventory for 2 minutes, then expire to CANCELLED if unpaid. Reject overlapping bookings for a room or pet. Failed payment can be retried before expiry. Repeated successful checkout/review must not charge/refund twice. Approved cancellation records a full mock refund for a paid booking and releases the room; declined requests keep it confirmed.
 
 Customers can request a new check-in and/or check-out for an upcoming confirmed stay. Quotes use the booked nightly rate and customers must confirm the new total. The original room and dates remain reserved while a request is pending. Approval rechecks that same physical room, ignores the booking’s own occupied nights, then updates dates, total and any simulated adjustment in one transaction. The booking reference stays the same. A conflict leaves the booking and request unchanged. Declining either type of change request requires a reason.
@@ -109,4 +108,4 @@ The sample accounts use public demo password `PawInnDemo123!`, stored as bcrypt 
 
 A customer signs in, loads their pets, browses room types, asks booking for availability, creates a reservation, completes mock checkout and reads booking history. Then the customer requests cancellation and staff reviews it.
 
-Only an isolated test deployment enables fixture accounts. In normal operation, create customer accounts through signup and staff accounts from the Admin portal.
+Only an isolated test deployment enables fixture accounts. In normal operation, create customer accounts through signup and staff accounts with the local Account command described in the [setup guide](../README.md#set-up-staff-access).

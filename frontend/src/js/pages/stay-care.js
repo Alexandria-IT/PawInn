@@ -76,7 +76,7 @@ export default (isStaff) => ({
     return this.legacyCareType ? [...careTypes, this.legacyCareType] : careTypes;
   },
 
-  // Bound the form to scheduled Bangkok dates and actual time up to now.
+  // Allow arrival on check-in day and actual pickup up to now.
   attendanceBounds(kind) {
     const now = bangkokInput();
     const start = this.careBooking?.start;
@@ -86,9 +86,9 @@ export default (isStaff) => ({
     const arrived = this.careData?.arrivedAt;
     const arrival = kind === "pickup" && arrived ? bangkokInput(arrived) : first;
     const min = arrival > first ? arrival : first;
-    const last = end + "T23:59";
-    const max = now < last ? now : last;
-    return { min, max, available: min <= max };
+    const last = start + "T23:59";
+    const max = kind === "arrival" && now > last ? last : now;
+    return { min, max, available: min <= max && (kind === "pickup" || now <= last) };
   },
 
   // Clear booking-specific state when the modal or session changes.

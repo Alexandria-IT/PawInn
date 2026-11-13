@@ -8,6 +8,7 @@ import {
   today,
   transaction,
 } from "../shared/runtime.js";
+import { sweepNoShows } from "../shared/attendance.js";
 import { readMultipartForm, readPhoto } from "./updates.js";
 
 const bangkokDate = new Intl.DateTimeFormat("en-CA", {
@@ -230,24 +231,31 @@ function readEvent(req) {
 async function saveAttendance(db, booking, actor, kind, at, supplied, log) {
   const pickup = kind === "pickup";
   const previous = pickup ? booking.pickedUpAt : booking.arrivedAt;
-  const { id: bookingId, arrivedAt, pickedUpAt, status } = booking;
+  const { id: bookingId, arrivedAt, pickedUpAt, status, latePickupFee } = booking;
   if (previous) {
     if (!supplied || +new Date(previous) === +at)
-      return { arrivedAt, pickedUpAt, status };
+      return { arrivedAt, pickedUpAt, status, latePickupFee };
     fail(409, "That attendance time is already recorded.");
   }
+  if (booking.noShowAt)
+    fail(409, "The check-in day has passed. The room was released without a refund.");
   if (status !== "CONFIRMED")
     fail(409, "Attendance can only be recorded for confirmed bookings.");
   const date = localCareDate(at);
-  if (date < booking.start || date > booking.end)
-    fail(409, "Record arrival or pickup on a date within the scheduled stay (Bangkok time).");
   if (!pickup) {
+    if (date !== booking.start || today() !== booking.start)
+      fail(409, "Record arrival on the first day of the booking (Bangkok time).");
+    const { rowCount } = await db.query(
+      "SELECT 1 FROM bookings WHERE room_id=$1 AND booking_id<>$2 AND status='CONFIRMED' AND arrived_at IS NOT NULL AND picked_up_at IS NULL LIMIT 1",
+      [booking.roomId, bookingId],
+    );
+    if (rowCount) fail(409, "This room is still occupied. Record the previous stay's pickup first.");
     await db.query("UPDATE bookings SET arrived_at=$2 WHERE booking_id=$1", [
       bookingId,
       at,
     ]);
     await log(db, bookingId, actor, "STAY_ARRIVED", "Actual arrival recorded.");
-    return { arrivedAt: at, pickedUpAt, status };
+    return { arrivedAt: at, pickedUpAt, status, latePickupFee };
   }
   if (!arrivedAt || +at < +new Date(arrivedAt))
     fail(409, "Record arrival before pickup.");
@@ -266,18 +274,26 @@ async function saveAttendance(db, booking, actor, kind, at, supplied, log) {
   );
   if (hasLaterCare)
     fail(409, "The pickup date cannot precede an existing care record.");
+  const deadline = Date.parse(`${booking.end}T${booking.pickupDeadline}:00+07:00`);
+  const lateHours = Math.max(0, Math.ceil((+at - deadline) / 3_600_000));
+  const fee = lateHours * booking.latePickupHourlyRate;
   await db.query(
-    "UPDATE bookings SET picked_up_at=$2, status='COMPLETED' WHERE booking_id=$1",
-    [bookingId, at],
+    "UPDATE bookings SET picked_up_at=$2, status='COMPLETED', late_pickup_fee=$3 WHERE booking_id=$1",
+    [bookingId, at, fee],
   );
   await log(db, bookingId, actor, "STAY_COMPLETED", "Actual pickup recorded. Stay marked completed.");
-  return { arrivedAt, pickedUpAt: at, status: "COMPLETED" };
+  if (fee > 0) {
+    await log(db, bookingId, actor, "LATE_PICKUP_CHARGED",
+      `Simulated late pickup charge of THB ${fee} for ${lateHours} started hour(s).`);
+  }
+  return { arrivedAt, pickedUpAt: at, status: "COMPLETED", latePickupFee: fee };
 }
 
 // Register the attendance, daily care history, and private photo endpoints.
 export function registerCareRoutes(router, pool, auth, { getBooking, log }) {
   router.get(carePath, auth(), async (req, res) => {
     const bookingId = id(req.params.id);
+    await sweepNoShows(pool);
     const history = await transaction(pool, async (db) => {
       const booking = await getBooking(db, bookingId, owner(req));
       const { petId, petName, status, arrivedAt, pickedUpAt } = booking;
@@ -296,6 +312,10 @@ export function registerCareRoutes(router, pool, auth, { getBooking, log }) {
         status,
         arrivedAt,
         pickedUpAt,
+        noShowAt: booking.noShowAt,
+        latePickupFee: booking.latePickupFee,
+        pickupDeadline: booking.pickupDeadline,
+        latePickupHourlyRate: booking.latePickupHourlyRate,
         days,
         missingReportDates: days.filter((day) => !day.report).map((day) => day.date),
       };
@@ -325,6 +345,7 @@ export function registerCareRoutes(router, pool, auth, { getBooking, log }) {
       const bookingId = id(req.params.id);
       const { at } = body(req, ["at"]);
       const timestamp = attendanceTime(at);
+      await sweepNoShows(pool);
       const attendance = await transaction(pool, async (db) => {
         const booking = await getBooking(db, bookingId, null);
         return saveAttendance(

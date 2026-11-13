@@ -181,6 +181,7 @@ export function createService({ express, jwt, pool, secret, routes, tables }) {
       );
       if (
         !user ||
+        !["CUSTOMER", "STAFF"].includes(user.role) ||
         user.account_status !== "ACTIVE" ||
         user.session_version !== version ||
         (!process.env.PAWINN_SEED_DEMO?.match(/^(1|true)$/i) &&
@@ -194,8 +195,6 @@ export function createService({ express, jwt, pool, secret, routes, tables }) {
             ? "Staff access is required."
             : "A customer account is required.",
         );
-      if (!role && user.role === "ADMIN")
-        fail(403, "A customer or staff account is required.");
       req.user = user;
       next();
     };
@@ -232,7 +231,7 @@ export function createService({ express, jwt, pool, secret, routes, tables }) {
 // Start the service when its entry point is run directly.
 export async function runService(
   file,
-  { express, pg, jwt, name, port, routes, tables, prepare },
+  { express, pg, jwt, name, port, routes, tables, prepare, start },
 ) {
   if (!process.argv[1] || resolve(process.argv[1]) !== fileURLToPath(file))
     return;
@@ -275,8 +274,10 @@ export async function runService(
     /* Log when the service starts listening. */ () =>
       console.log("PawInn " + name + " is listening."),
   );
+  const stopBackgroundWork = start?.(pool);
   // Begin a graceful shutdown on a process signal.
-  const stop = () =>
+  const stop = () => {
+    stopBackgroundWork?.();
     server.close(
       /* Close the pool after the server stops taking requests. */ () =>
         pool.end().catch(
@@ -285,6 +286,7 @@ export async function runService(
           },
         ),
     );
+  };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
 }

@@ -1,6 +1,6 @@
 # PawInn
 
-PawInn is a pet hotel booking portal for dogs and cats. Customers can check room availability, book a stay, and leave special-care instructions. Staff manage rooms, review booking changes, and record how pets are doing during their stay. Admins manage accounts and review account changes.
+PawInn is a pet hotel booking portal for dogs and cats. Customers can check room availability, book a stay, and leave special-care instructions. Staff manage rooms, review booking changes, and record how pets are doing during their stay.
 
 **Payments, reschedule adjustments, and refunds are simulated.** PawInn does not collect card details or charge money.
 
@@ -45,7 +45,7 @@ If you already cloned PawInn inside the course container, enter that directory a
 
 Before the first `docker compose up`, open `.env` and choose a value for `PAWINN_SEED_DEMO`:
 
-- **`false` (default)** starts with 15 rooms and an empty user table. Customers can register in the app. Follow the [Admin and Staff setup](#set-up-admin-and-staff-access) to create those accounts.
+- **`false` (default)** starts with 15 rooms and an empty user table. Customers can register in the app. Follow [Set up staff access](#set-up-staff-access) to create a staff account.
 - **`true`** also loads sample users, pets, and bookings. Use this for grading if you want accounts and bookings ready to try.
 
 The demo accounts all use the password **`PawInnDemo123!`**.
@@ -56,7 +56,7 @@ The demo accounts all use the password **`PawInnDemo123!`**.
 | Customer | Alex Morgan | `alex@pawinn.demo` |
 | Staff | PawInn Team | `team@pawinn.demo` |
 
-Create the first **Admin** separately using the [setup below](#set-up-admin-and-staff-access). PostgreSQL loads the demo accounts only when it initializes a **fresh database volume**. Changing the flag and restarting an existing database won’t add them. [Seed accounts](database/account/seed.sql) · [Database setup](database/README.md)
+PostgreSQL loads the demo accounts only when it initializes a **fresh database volume**. Changing the flag and restarting an existing database won’t add them. [Seed accounts](database/account/seed.sql) · [Database setup](database/README.md)
 
 ### 4. Start PawInn and open it on your computer
 
@@ -70,24 +70,24 @@ curl -fsS http://127.0.0.1:8080/api/room-types
 
 Keep the SSH session open and visit [PawInn at 127.0.0.1:8082](http://127.0.0.1:8082) in your computer’s browser. If you change `FRONTEND_PORT`, update the last port in the SSH `-L` option and the `curl` URL to match. If your computer’s port `8082` is busy, change the first port in `-L` and use that port in your browser.
 
-## Set up Admin and Staff access
+## Set up staff access
 
-If you enabled demo data, you can sign in as Staff with the account above. For Admin access, run the following once **inside the course container**, from the PawInn directory. Replace `admin@example.com` with an unused email address and choose a password of at least 12 characters (up to 72 bytes).
+If you enabled demo data, you can sign in with the staff account listed above. To create a staff account of your own, run this inside the course container from the PawInn directory after the stack starts. Use an unused email address and a password of at least 12 characters and at most 72 bytes.
 
 ```bash
-read -r -s -p 'New PawInn Admin password: ' admin_password
+read -r -s -p 'New PawInn staff password: ' staff_password
 printf '\n'
-printf '%s\n' "$admin_password" | docker compose exec -T account node bootstrap-admin.js admin@example.com "PawInn Admin"
-unset admin_password
+printf '%s\n' "$staff_password" | docker compose exec -T account node create-staff.js staff@example.com "PawInn Staff"
+unset staff_password
 ```
 
-Sign in to PawInn with the new Admin account. To add a staff member, choose **Create staff account** in **Account administration**, then sign in as that Staff user to open the dashboard. Admins can also change staff access, suspend or reactivate accounts, and see changes in **Audit history**.
+Sign in with the new staff account to open the staff dashboard.
 
 ## Try a booking
 
 1. **Customer:** Choose **Sign in → Create an account** and add a dog or cat under **My pets**. Go to **Our rooms**, select your saved pet and dates, and choose a room. Add any special-care instructions and complete the simulated checkout. Use **Edit booking details** during checkout if you need to change the reservation before paying.
 2. **Booking changes:** Open **My bookings → View details** on an upcoming confirmed stay to request cancellation or new dates. For a reschedule, review the new total and any simulated charge or refund before sending. The original dates stay booked while staff reviews the request.
-3. **Staff:** Use **Change requests** to review booking changes. Under **All bookings → Stay care**, record actual arrival and pickup, publish daily reports with photos, and log individual care events. Use **Send a quick update** in the same screen to send an extra message or photo.
+3. **Staff:** Record arrival by midnight at the end of the check-in day in Bangkok. If no arrival is recorded, PawInn releases the room and keeps the original simulated payment. Pickup is due by noon on checkout day. PawInn adds a simulated THB 100 fee for each started hour after noon. Use **Change requests** to review booking changes. Under **All bookings → Stay care**, record actual arrival and pickup, publish daily reports with photos, and log individual care events. Use **Send a quick update** in the same screen to send an extra message or photo.
 4. **Customer:** Open **Pet Updates** for published daily reports and quick updates. Select **View stay care** to open the booking's full care history, which is also available under **My bookings → View details → Care during stay**. The history stays available after pickup.
 
 ## Stop or troubleshoot
@@ -98,7 +98,7 @@ Sign in to PawInn with the new Admin account. To add a staff member, choose **Cr
 
 ## Tests and Jenkins
 
-- **Run tests:** Inside the course container, run `sh scripts/verify.sh` from the repository root. It builds an isolated test stack, checks the database, booking, care, and Admin flows, and removes its own test containers and database.
+- **Run tests:** Inside the course container, run `sh scripts/verify.sh` from the repository root. It builds an isolated test stack, checks the database, staff account setup, bookings, and care, and removes its own test containers and database.
 - **GitHub Actions** runs the verification script on pushes and pull requests.
 - **Jenkins** checks out `main` by default, tests it, and deploys the tested images to the local Docker stack. Jenkins uses the same `.env` as a manual startup. Keep the original database settings when deploying over an existing PostgreSQL volume.
 
@@ -121,7 +121,7 @@ Open [Jenkins at 127.0.0.1:8083](http://127.0.0.1:8083), sign in as `admin` with
 | Folder | What's inside |
 | --- | --- |
 | `frontend/` | HTML, Tailwind CSS, Alpine.js, and Nginx |
-| `services/account/` | Sign-in, registration, pet profiles, and Admin account management |
+| `services/account/` | Sign-in, customer registration, and pet profiles |
 | `services/room/` | Room catalog and inventory |
 | `services/booking/` | Availability, reservations, simulated checkout, change requests, stay care, and pet updates |
 | `database/` | Shared PostgreSQL schema, room inventory, and optional test data |

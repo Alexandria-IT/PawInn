@@ -109,8 +109,8 @@ export default () => ({
   // Count confirmed stays that are in progress.
   get occupied() {
     return this.all.filter(
-      /* Include stays through the night before checkout. */ (b) =>
-        b.status === "CONFIRMED" && b.start <= today() && b.end > today(),
+      /* Include pets still on site after their scheduled checkout. */ (b) =>
+        b.status === "CONFIRMED" && (b.arrivedAt || (b.start <= today() && b.end > today())),
     ).length;
   },
   // Check whether the booking is waiting for a staff decision.

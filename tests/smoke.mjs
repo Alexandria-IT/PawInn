@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { verifyCare } from "./requirements-care.mjs";
-import { verifyAdmin } from "./requirements-admin.mjs";
 
 const origin = process.env.BASE_URL;
 const write = process.env.PAWINN_TEST === "1";
@@ -106,9 +105,13 @@ if (!write) {
 // Exercise inventory, reservation, payment, and cancellation behavior.
 async function verifyBookings() {
   const staff = await request("/api/auth/login", "POST", {
-    email: "team@pawinn.demo",
-    password: "PawInnDemo123!",
+    email: "verify-staff@pawinn.test",
+    password: "SmokeStaffOnly123!",
   });
+  assert.equal(staff.user.role, "STAFF");
+  await request("/api/admin/users", "GET", null, staff.token, 404);
+  const removedPage = await fetch(origin + "/pages/admin.html", { signal: AbortSignal.timeout(15000) });
+  assert.equal(removedPage.status, 404);
   const inventoryPath = "/api/rooms/inventory";
   // Check the expired hold before the Booking API sweeps it.
   const inventoryRoom = async (id) =>
@@ -455,11 +458,54 @@ async function verifyBookings() {
   });
   await postUpdate("3999", staff.token, "Care history test update.", null);
   await verifyCare({ request, staff, customer: careCustomer, foreign, booking: { id: "3999" }, origin });
-  await verifyAdmin({
-    request, staff, customer: p, customerPassword: password, bookingId: confirmed.id,
-    adminEmail: process.env.PAWINN_TEST_ADMIN_EMAIL,
-    adminPassword: process.env.PAWINN_TEST_ADMIN_PASSWORD,
-  });
+  await verifyAttendancePolicy(staff, careCustomer, inventoryRoom);
+
+}
+
+
+// Check the no-show release, overdue occupancy, and retry-safe late pickup fee.
+async function verifyAttendancePolicy(staff, customer, inventoryRoom) {
+  const now = new Date().toISOString();
+  const sameDayPath = "/api/bookings/3996/care";
+  assert.deepEqual((await request(sameDayPath, "GET", null, staff.token)).days, []);
+  await request(sameDayPath + "/pickup", "PATCH", { at: now }, staff.token, 409);
+  const arrival = await request(sameDayPath + "/arrival", "PATCH", { at: now }, staff.token);
+  assert.equal(arrival.arrivedAt, now);
+
+  const noShowPath = "/api/bookings/3998";
+  await request(noShowPath + "/care/arrival", "PATCH", { at: now }, staff.token, 409);
+  const missed = await request(noShowPath, "GET", null, customer.token);
+  assert.equal(missed.status, "CANCELLED");
+  assert.equal(missed.paymentStatus, "SUCCESS");
+  assert.equal(missed.refundStatus, "NOT_REQUESTED");
+  assert.equal(missed.cancellation.status, "EXPIRED");
+  assert.equal(missed.logs.filter(({ action }) => action === "NO_SHOW").length, 1);
+  assert.equal((await inventoryRoom(305)).reservationStatus, null);
+  await request("/api/cancellations/" + missed.cancellation.id, "PATCH",
+    { decision: "APPROVED" }, staff.token, 409);
+
+  const bangkok = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" });
+  const today = bangkok.format(new Date(now));
+  const tomorrow = bangkok.format(new Date(Date.parse(now) + 86_400_000));
+  const gardenAvailability = async () => {
+    const rows = await request("/api/availability?start=" + today + "&end=" + tomorrow);
+    return rows.find(({ roomTypeId }) => roomTypeId === "2").available;
+  };
+  const availableBeforePickup = await gardenAvailability();
+  const latePath = "/api/bookings/3997";
+  assert.equal((await inventoryRoom(205)).reservationStatus, "RESERVED");
+  await request("/api/rooms/205", "PATCH", { isActive: false }, staff.token, 409);
+  const late = await request(latePath, "GET", null, staff.token);
+  const at = late.end + "T13:01:00+07:00";
+  const completed = await request(latePath + "/care/pickup", "PATCH", { at }, staff.token);
+  assert.equal(completed.latePickupFee, 200);
+  assert.deepEqual(await request(latePath + "/care/pickup", "PATCH", { at }, staff.token), completed);
+  const billed = await request(latePath, "GET", null, staff.token);
+  assert.equal(billed.totalWithFees, late.total + 200);
+  assert.equal(billed.logs.filter(({ action }) => action === "LATE_PICKUP_CHARGED").length, 1);
+  assert.equal((await inventoryRoom(205)).reservationStatus, null);
+  assert.equal(await gardenAvailability(), availableBeforePickup + 1);
+  console.log("PASS: no-show release without refund, overdue occupancy, rounded late pickup fee, and safe retry.");
 }
 
 // Check that closures protect future inventory without changing existing stays.

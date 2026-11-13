@@ -2,7 +2,7 @@
 
 PawInn uses one PostgreSQL container with one database, `pawinn`. Account, Room and Booking each own writes to their tables, and share foreign keys and reads where needed.
 
-- Account: users, pets, account status and audit history.
+- Account: users, pets, and account status.
 - Room: room types and physical rooms.
 - Booking: reservations, change requests and adjustments, booking logs, pet updates, attendance, daily reports, care events and corrections.
 
@@ -12,7 +12,7 @@ The Node services use postgres:5432 inside Compose. Host development uses the lo
 
 ## Existing databases
 
-Account and Booking migrate their tables on startup, including when an existing database volume is reused. Existing accounts start active, bookings keep their dates and prices, and attendance remains empty when PawInn never recorded it. Do not infer actual arrival or pickup times from the reservation dates.
+Account and Booking migrate their tables on startup, including when an existing database volume is reused. Existing account statuses are preserved, bookings keep their dates and prices, and attendance remains empty when PawInn never recorded it. Older database volumes retain retired administrator rows and account audit history. Those accounts cannot sign in. Do not infer actual arrival or pickup times from the reservation dates.
 
 PostgreSQL initialization runs only on a fresh data directory. The upgrade from the previous PawInn stack uses the same schema and preserves the existing volume and records. Do not delete the volume to apply this change. Fixture accounts and histories stay stored. Normal sign-in and staff booking views exclude them.
 

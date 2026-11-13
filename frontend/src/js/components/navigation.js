@@ -36,12 +36,11 @@ export default () => ({
   // Choose whether to show the public navigation.
   get showSiteNavigation() {
     const { ready, user } = this.$store.portal;
-    if (this.active("admin")) return ready && user?.role !== "ADMIN";
     return !this.active("staff-dashboard") || (ready && user?.role !== "STAFF");
   },
   // Label the account in the profile menu.
   get accountLabel() {
-    const labels = { ADMIN: "Administrator account", STAFF: "Staff account", CUSTOMER: "Customer account" };
+    const labels = { STAFF: "Staff account", CUSTOMER: "Customer account" };
     return labels[this.$store.portal.user?.role] || "";
   },
   // Build the account avatar initials.

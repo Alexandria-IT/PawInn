@@ -1,4 +1,5 @@
 import { fail, id, send, body, transaction, today, holdMinutes, dateRange } from "../shared/runtime.js";
+import { sweepNoShows } from "../shared/attendance.js";
 
 const roomFields = `room_id::text AS id, room_type_id::text AS "roomTypeId",
   room_number AS "roomNumber", is_active AS "isActive"`;
@@ -9,7 +10,8 @@ const reservationJoin = `LEFT JOIN LATERAL (
     CASE WHEN b.status = 'PENDING'
       THEN b.created_at + interval '${holdMinutes} minutes' END AS expires_at
   FROM bookings b
-  WHERE b.room_id = r.room_id AND b.check_out_date > $1::date
+  WHERE b.room_id = r.room_id AND
+    (b.check_out_date > $1::date OR (b.arrived_at IS NOT NULL AND b.picked_up_at IS NULL))
     AND (b.status = 'CONFIRMED' OR
       (b.status = 'PENDING' AND b.created_at > now() - interval '${holdMinutes} minutes'))
   ORDER BY (b.status = 'CONFIRMED') DESC, b.created_at DESC
@@ -53,6 +55,7 @@ export function routes(router, pool, auth) {
     "/rooms/inventory",
     auth("STAFF"),
     /* List the rooms and their current deactivation status. */ async (_req, res) => {
+      await sweepNoShows(pool);
       const { rows } = await pool.query(
         `SELECT ${roomFields}, reservation.status AS "reservationStatus",
           reservation.expires_at AS "holdExpiresAt",
@@ -78,6 +81,7 @@ export function routes(router, pool, auth) {
       const { start, reopen } = body(req, ["start", "reopen"]);
       dateRange(start, reopen, "closure and reopening");
       if (reopen <= start) fail(400, "Reopening must be after the closure starts.");
+      await sweepNoShows(pool);
       const closure = await transaction(pool, async (db) => {
         if (start <= today())
           fail(400, "Schedule closures at least one calendar day ahead (Bangkok time).");
@@ -140,6 +144,7 @@ export function routes(router, pool, auth) {
         { isActive } = body(req, ["isActive"]);
       if (typeof isActive !== "boolean")
         fail(400, "Choose an active or inactive status.");
+      if (!isActive) await sweepNoShows(pool);
       const room = await transaction(
         pool,
         /* Check outstanding stays and apply the inventory change under lock. */ async (

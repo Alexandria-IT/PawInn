@@ -126,6 +126,7 @@
               <option value="PENDING">Pending</option>
               <option value="APPROVED">Approved</option>
               <option value="DECLINED">Declined</option>
+              <option value="EXPIRED">Expired</option>
             </select>
           </label>
         </div>
@@ -181,7 +182,7 @@
                         x-text="'Reschedule: '+(booking.reschedule?.status||'')"
                       ></p>
                     </td>
-                    <td x-text="money(booking.total)"></td>
+                    <td x-text="money(booking.totalWithFees ?? booking.total)"></td>
                     <td>
                       <button class="btn btn-outline btn-sm" @click="openDetails(booking)">Details</button>
                       <button
@@ -442,7 +443,9 @@
               <p x-text="detail.roomName+' · Room '+detail.roomNumber"></p>
               <p x-text="dateLabel(detail.start)+' to '+dateLabel(detail.end)"></p>
               <p x-text="'Booking status: '+detail.status"></p>
-              <p x-text="'Total: '+money(detail.total)"></p>
+              <p x-text="'Total: '+money(detail.totalWithFees ?? detail.total)"></p>
+              <p x-show="detail.latePickupFee > 0" x-text="'Includes a simulated late pickup charge of '+money(detail.latePickupFee)"></p>
+              <p x-show="detail.noShowAt">No-show. The room was released without a refund.</p>
               <p x-show="detail.cancellation" x-text="'Cancellation request: '+detail.cancellation?.status"></p>
               <p x-show="detail.reschedule" x-text="'Reschedule request: '+detail.reschedule?.status"></p>
               <p x-show="detail.specialCare" class="whitespace-pre-wrap break-words" x-text="'Care instructions: '+detail.specialCare"></p>

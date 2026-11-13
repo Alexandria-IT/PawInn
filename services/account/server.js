@@ -40,7 +40,6 @@ export function createApp({
     ) => {
       try {
         await pool.query("SELECT user_id, account_status, session_version FROM users LIMIT 0");
-        await pool.query("SELECT audit_id FROM account_audit LIMIT 0");
         await pool.query("SELECT pet_id FROM pets LIMIT 0");
         await pool.query("SELECT booking_id FROM bookings LIMIT 0");
         res.json({ data: { status: "ok" } });

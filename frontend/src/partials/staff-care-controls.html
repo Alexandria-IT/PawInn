@@ -88,10 +88,14 @@
           Actual date and time (Bangkok)
           <input type="datetime-local" x-model="attendanceTime"
             :min="attendanceBounds(careForm).min" :max="attendanceBounds(careForm).max" required />
-          <span class="text-xs muted">Choose an actual time within the scheduled stay.</span>
+          <span class="text-xs muted">Choose an actual time in the past or now.</span>
         </label>
+        <p class="text-sm muted" x-show="careForm === 'arrival'">
+          Record arrival on the check-in date. At midnight, unarrived bookings are cancelled without a refund.
+        </p>
         <p class="text-sm muted" x-show="careForm === 'pickup'">
-          Recording pickup completes the stay.
+          Pickup is due by <span x-text="careData?.pickupDeadline"></span> on the scheduled checkout date.
+          Recording a later pickup adds a simulated charge of THB <span x-text="careData?.latePickupHourlyRate"></span> per started hour.
         </p>
         <div class="flex flex-wrap gap-2">
           <button class="btn btn-primary btn-sm" type="submit">Save time</button>
