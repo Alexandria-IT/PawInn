@@ -258,6 +258,11 @@
                       :class="room.reservationStatus === 'HELD' ? 'badge-pending' : 'badge-confirmed'"
                       x-text="room.reservationStatus === 'HELD' ? 'Payment hold' : 'Reserved'"></span>
                   </div>
+                  <p class="mt-1 text-sm muted break-words" x-show="room.reservationBookingId">
+                    <span class="font-semibold" x-text="'Booking #' + room.reservationBookingId"></span>
+                    <span x-text="' · Guest: ' + room.reservationGuestName"></span>
+                    <span x-text="' · Pet: ' + room.reservationPetName"></span>
+                  </p>
                 </div>
                 <div class="flex flex-wrap gap-2">
                   <button type="button" class="btn btn-outline btn-sm" x-show="room.isActive"

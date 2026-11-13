@@ -4,9 +4,10 @@ import { sweepNoShows } from "../shared/attendance.js";
 const roomFields = `room_id::text AS id, room_type_id::text AS "roomTypeId",
   room_number AS "roomNumber", is_active AS "isActive"`;
 
-// Pick the booking that currently prevents deactivation, preferring a confirmed stay.
+// Pick the booking that prevents deactivation, with in-house pets shown first.
 const reservationJoin = `LEFT JOIN LATERAL (
   SELECT CASE WHEN b.status = 'CONFIRMED' THEN 'RESERVED' ELSE 'HELD' END AS status,
+    b.booking_id, b.user_id, b.pet_id,
     CASE WHEN b.status = 'PENDING'
       THEN b.created_at + interval '${holdMinutes} minutes' END AS expires_at
   FROM bookings b
@@ -14,7 +15,8 @@ const reservationJoin = `LEFT JOIN LATERAL (
     (b.check_out_date > $1::date OR (b.arrived_at IS NOT NULL AND b.picked_up_at IS NULL))
     AND (b.status = 'CONFIRMED' OR
       (b.status = 'PENDING' AND b.created_at > now() - interval '${holdMinutes} minutes'))
-  ORDER BY (b.status = 'CONFIRMED') DESC, b.created_at DESC
+  ORDER BY (b.arrived_at IS NOT NULL AND b.picked_up_at IS NULL) DESC,
+    (b.status = 'CONFIRMED') DESC, b.check_in_date, b.booking_id
   LIMIT 1
 ) reservation ON TRUE`;
 
@@ -59,8 +61,12 @@ export function routes(router, pool, auth) {
       const { rows } = await pool.query(
         `SELECT ${roomFields}, reservation.status AS "reservationStatus",
           reservation.expires_at AS "holdExpiresAt",
+          reservation.booking_id::text AS "reservationBookingId",
+          guest.full_name AS "reservationGuestName", pet.name AS "reservationPetName",
           COALESCE(closures.items, '[]') AS closures
         FROM rooms r ${reservationJoin}
+        LEFT JOIN users guest ON guest.user_id=reservation.user_id
+        LEFT JOIN pets pet ON pet.pet_id=reservation.pet_id
         LEFT JOIN LATERAL (
           SELECT json_agg(json_build_object(
             'id', closure_id::text, 'start', starts_on::text, 'reopen', reopens_on::text

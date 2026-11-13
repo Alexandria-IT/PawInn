@@ -188,9 +188,21 @@ async function verifyBookings() {
   const roomPath = "/api/rooms/" + room.id;
   await request(inventoryPath, "GET", null, null, 401);
   await request(inventoryPath, "GET", null, people[0].token, 403);
-  assert.equal((await inventoryRoom(room.id)).reservationStatus, null);
-  assert.equal((await inventoryRoom(101)).reservationStatus, "RESERVED");
-  assert.equal((await request("/api/rooms")).find(({ id }) => id === "101").reservationStatus, undefined);
+  const unreservedRoom = await inventoryRoom(room.id);
+  assert.equal(unreservedRoom.reservationStatus, null);
+  assert.equal(unreservedRoom.reservationBookingId, null);
+  assert.equal(unreservedRoom.reservationGuestName, null);
+  assert.equal(unreservedRoom.reservationPetName, null);
+  const seededRoom = await inventoryRoom(101);
+  assert.equal(seededRoom.reservationStatus, "RESERVED");
+  // The pet still in-house takes precedence over the future booking for C101.
+  assert.equal(seededRoom.reservationBookingId, "3999");
+  assert.equal(seededRoom.reservationGuestName, "Jamie Parker");
+  assert.equal(seededRoom.reservationPetName, "Mochi");
+  const publicRoom = (await request("/api/rooms")).find(({ id }) => id === "101");
+  for (const field of ["reservationStatus", "reservationBookingId", "reservationGuestName", "reservationPetName"]) {
+    assert.equal(publicRoom[field], undefined);
+  }
   await request(roomPath, "PATCH", { isActive: false }, null, 401);
   await request(roomPath, "PATCH", { isActive: false }, people[0].token, 403);
   assert.equal(
@@ -279,6 +291,9 @@ async function verifyBookings() {
   }, foreign.token, 201);
   const heldInventory = await inventoryRoom(held.roomId);
   assert.equal(heldInventory.reservationStatus, "HELD");
+  assert.equal(heldInventory.reservationBookingId, held.id);
+  assert.equal(heldInventory.reservationGuestName, "Smoke Customer");
+  assert.equal(heldInventory.reservationPetName, "Miso");
   await request("/api/rooms/" + held.roomId + "/closures", "POST",
     { start: held.start, reopen: held.end }, staff.token, 409);
   await request("/api/rooms/" + held.roomId, "PATCH", { isActive: false }, staff.token, 409);
