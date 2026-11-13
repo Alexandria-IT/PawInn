@@ -102,6 +102,12 @@ if (!write) {
   await verifyBookings();
 }
 
+// Check the lifetime encoded in a freshly issued session token.
+function assertTwoHourSession(token) {
+  const { iat, exp } = JSON.parse(Buffer.from(token.split(".")[1], "base64url"));
+  assert.equal(exp - iat, 2 * 60 * 60);
+}
+
 // Exercise inventory, reservation, payment, and cancellation behavior.
 async function verifyBookings() {
   const staff = await request("/api/auth/login", "POST", {
@@ -109,6 +115,7 @@ async function verifyBookings() {
     password: "SmokeStaffOnly123!",
   });
   assert.equal(staff.user.role, "STAFF");
+  assertTwoHourSession(staff.token);
   await request("/api/admin/users", "GET", null, staff.token, 404);
   const removedPage = await fetch(origin + "/pages/admin.html", { signal: AbortSignal.timeout(15000) });
   assert.equal(removedPage.status, 404);
@@ -156,6 +163,7 @@ async function verifyBookings() {
       null,
       201,
     );
+    assertTwoHourSession(account.token);
     const pet = await request(
       "/api/pets",
       "POST",

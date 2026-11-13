@@ -98,7 +98,7 @@ export function accountRoutes(pool, secret, allowFixtures) {
         ...tokenOptions,
         algorithm: "HS256",
         subject: String(user.user_id),
-        expiresIn: "1h",
+        expiresIn: "2h",
       }),
     };
   }

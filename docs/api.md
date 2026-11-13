@@ -22,7 +22,7 @@
 | `PATCH /api/pets/:id/archive` | ส่ง `{archived: true}` เพื่อเก็บถาวร หรือ `{archived: false}` เพื่อกู้คืน |
 | `DELETE /api/pets/:id` | ลบถาวรได้เมื่อสัตว์ยังไม่มีประวัติจอง |
 
-Account ออก JWT แบบ HS256 อายุหนึ่งชั่วโมง โดยใช้ issuer `pawinn-account`, audience `pawinn` และ ID ผู้ใช้ใน `sub` ข้อมูลผู้ใช้ที่ส่งกลับมี `id`, `name`, `email`, `phone` และ `role` บัญชี Staff สร้างตาม [ขั้นตอนใน README](../README.md#set-up-staff-access)
+Account ออก JWT แบบ HS256 อายุ 2 ชั่วโมงนับจากเวลาออกโทเคน โดยใช้ issuer `pawinn-account`, audience `pawinn` และ ID ผู้ใช้ใน `sub` ข้อมูลผู้ใช้ที่ส่งกลับมี `id`, `name`, `email`, `phone` และ `role` บัญชี Staff สร้างตาม [ขั้นตอนใน README](../README.md#set-up-staff-access)
 
 โปรไฟล์มี `id`, `ownerId`, `name`, `species`, `breed`, `birthDate`, `notes` และ `archivedAt` รายการสัตว์มี `bookingState` เป็น `NONE`, `ACTIVE` หรือ `HISTORY` สัตว์ที่มีการกันห้องที่ยังไม่หมดอายุ มีนัดยืนยัน หรือกำลังพัก เก็บถาวรไม่ได้ เมื่อทุกรายการสิ้นสุดแล้ว เก็บถาวรได้โดยยังดูประวัติเดิม และต้องกู้คืนก่อนจองครั้งใหม่
 
