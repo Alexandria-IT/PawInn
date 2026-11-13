@@ -36,7 +36,16 @@ export async function listRooms(start, end) {
   );
 }
 // Fetch physical room inventory.
-export const inventory = () => request("rooms");
+export const inventory = () => request("rooms/inventory", { token: getToken() });
+// Schedule or remove a temporary closure for one room.
+export const scheduleClosure = (id, dates) =>
+  request("rooms/" + encodeURIComponent(id) + "/closures", {
+    method: "POST", token: getToken(), body: dates,
+  });
+export const removeClosure = (id, closureId) =>
+  request("rooms/" + encodeURIComponent(id) + "/closures/" + encodeURIComponent(closureId), {
+    method: "DELETE", token: getToken(),
+  });
 // Set the active status of a physical room.
 export const setActive = (id, isActive) =>
   request("rooms/" + encodeURIComponent(id), {

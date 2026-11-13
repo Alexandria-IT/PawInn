@@ -224,16 +224,20 @@
           Cancellation policy: approved cancellations receive a full simulated
           refund. Declined requests keep their booking confirmed.
         </p>
-        <section class="mt-10">
+        <section class="mt-10" @pawinn:booking-change.window="refreshInventoryFromBooking($event.detail)">
           <div class="flex items-center justify-between gap-4">
             <h2 class="text-2xl">Room inventory</h2>
             <button
               class="btn btn-outline"
               @click="loadRooms()"
               :disabled="inventoryLoading"
-              x-text="inventoryLoading?'Loading…':'Load inventory'"
+              x-text="inventoryLoading?'Loading…':'Refresh inventory'"
             ></button>
           </div>
+          <p class="text-sm muted mt-2">
+            Schedule temporary closures at least one day ahead. Dates that overlap a booking or payment hold are blocked.
+            Deactivate is for taking a room out of inventory indefinitely.
+          </p>
           <p
             class="error my-3"
             x-show="inventoryError"
@@ -242,22 +246,66 @@
           ></p>
           <ul class="mt-4 space-y-2">
             <template x-for="room in rooms" :key="room.id">
-              <li class="card p-3 flex items-center justify-between gap-3">
-                <span
-                  x-text="room.roomNumber+' · '+typeName(room.roomTypeId)"
-                ></span>
-                <button
-                  class="btn btn-outline btn-sm"
-                  @click="toggleRoom(room)"
-                  :disabled="busy"
-                  :aria-label="(room.isActive?'Deactivate ':'Activate ')+room.roomNumber"
-                  x-text="room.isActive?'Deactivate':'Activate'"
-                ></button>
+              <li class="card p-3 space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="font-semibold" x-text="room.roomNumber+' · '+typeName(room.roomTypeId)"></p>
+                  <div class="flex flex-wrap gap-2 mt-1">
+                    <span class="badge" :class="room.isActive ? 'badge-success' : 'badge-cancelled'"
+                      x-text="room.isActive ? 'Active' : 'Inactive'"></span>
+                    <span class="badge" x-show="room.reservationStatus"
+                      :class="room.reservationStatus === 'HELD' ? 'badge-pending' : 'badge-confirmed'"
+                      x-text="room.reservationStatus === 'HELD' ? 'Payment hold' : 'Reserved'"></span>
+                  </div>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" class="btn btn-outline btn-sm" x-show="room.isActive"
+                    :aria-label="'Schedule closure for '+room.roomNumber" @click="openClosure(room)">Schedule closure</button>
+                  <button type="button" class="btn btn-outline btn-sm" @click="toggleRoom(room)"
+                    :disabled="busy || (room.isActive && Boolean(room.reservationStatus))"
+                    :aria-label="(room.isActive?'Deactivate ':'Activate ')+room.roomNumber"
+                    x-text="room.isActive?'Deactivate':'Activate'"></button>
+                </div>
+                </div>
+                <ul x-show="room.closures?.length" class="space-y-2 border-t border-stone-200 pt-2 text-sm">
+                  <template x-for="closure in room.closures" :key="closure.id">
+                    <li class="flex flex-wrap items-center justify-between gap-2">
+                      <span x-text="(closure.start <= today() ? 'Closed' : 'Closure starts '+dateLabel(closure.start))+' · Reopens '+dateLabel(closure.reopen)"></span>
+                      <button type="button" class="text-link" :disabled="closureBusy"
+                        :aria-label="'Remove closure for '+room.roomNumber+' starting '+dateLabel(closure.start)"
+                        @click="cancelClosure(room, closure)">Remove closure</button>
+                    </li>
+                  </template>
+                </ul>
               </li>
             </template>
           </ul>
         </section>
       </section>
+      <div class="modal-overlay" x-show="closureRoom" x-cloak
+        @click.self="!closureBusy && (closureRoom=null)"
+        @keydown.escape.window="!closureBusy && (closureRoom=null)"
+        x-trap.inert.noscroll="closureRoom">
+        <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="closure-title">
+          <h2 id="closure-title" x-text="'Schedule closure · '+(closureRoom?.roomNumber || '')"></h2>
+          <p class="text-sm muted my-3">Dates follow Bangkok time. The room reopens for bookings on the date you choose.</p>
+          <form class="space-y-4" @submit.prevent="saveClosure()">
+            <div class="grid gap-3 sm:grid-cols-2">
+              <label>First day closed
+                <input type="date" x-model="closureStart" :min="addDays(today(), 1)" :disabled="closureBusy" required />
+              </label>
+              <label>Reopening date
+                <input type="date" x-model="closureReopen" :min="addDays(closureStart, 1)" :disabled="closureBusy" required />
+              </label>
+            </div>
+            <p class="error" role="alert" x-show="closureError" x-text="closureError"></p>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" class="btn btn-outline" :disabled="closureBusy" @click="closureRoom=null">Cancel</button>
+              <button type="submit" class="btn btn-primary" :disabled="closureBusy">Schedule closure</button>
+            </div>
+          </form>
+        </section>
+      </div>
       <div
         class="modal-overlay"
         x-show="target"

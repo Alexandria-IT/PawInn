@@ -30,6 +30,7 @@ async function prepare(pool) {
     "utf8",
   );
   const careSchema = await readFile(new URL("./care-schema.sql", import.meta.url), "utf8");
+  const roomClosureSchema = await readFile(new URL("../shared/room-closures.sql", import.meta.url), "utf8");
   const liveSchema = await readFile(new URL("./live-schema.sql", import.meta.url), "utf8");
   // Docker can restart Booking and PostgreSQL at the same time.
   for (let attempt = 1; ; attempt++) {
@@ -39,6 +40,7 @@ async function prepare(pool) {
         /* Apply the migrations under the shared inventory lock. */ async (
           db,
         ) => {
+          await db.query(roomClosureSchema);
           await db.query(rescheduleSchema);
           await db.query(updateSchema);
           await db.query(careSchema);
@@ -79,6 +81,7 @@ await runService(import.meta.url, {
     "booking_care_events",
     "booking_care_corrections",
     "rooms",
+    "room_closures",
     "room_types",
     "pets",
     "users",

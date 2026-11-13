@@ -120,6 +120,14 @@ async function get(db, booking, user) {
   return row;
 }
 
+// Closures start at midnight, so a stay must also have its checkout day clear.
+function noClosure(start, end) {
+  return `NOT EXISTS (
+    SELECT 1 FROM room_closures c WHERE c.room_id=r.room_id
+      AND c.starts_on<=${end}::date AND c.reopens_on>${start}::date
+  )`;
+}
+
 // Find a room under the inventory lock, optionally ignoring the stay being moved.
 async function availableRoom(
   db,
@@ -134,6 +142,7 @@ async function availableRoom(
   } = await db.query(
     `SELECT r.room_id FROM rooms r
      WHERE r.room_type_id=$1 AND r.is_active
+       AND ${noClosure("$2", "$3")}
        AND NOT EXISTS (
          SELECT 1 FROM bookings b
          WHERE b.room_id=r.room_id AND b.status IN ('PENDING','CONFIRMED')
@@ -207,6 +216,7 @@ export function routes(router, pool, auth) {
       const { rows } = await pool.query(
         `SELECT t.room_type_id::text AS "roomTypeId",count(r.room_id)::int AS available
        FROM room_types t LEFT JOIN rooms r ON r.room_type_id=t.room_type_id AND r.is_active
+         AND ${noClosure("$1", "$2")}
          AND NOT EXISTS (SELECT 1 FROM bookings b WHERE b.room_id=r.room_id AND b.status IN ('PENDING','CONFIRMED')
            AND b.check_in_date<$2::date AND b.check_out_date>$1::date)
        WHERE ($3::text IS NULL OR t.species=$3) GROUP BY t.room_type_id ORDER BY t.room_type_id`,
@@ -698,6 +708,7 @@ export function routes(router, pool, auth) {
             await expire(db);
             const { rowCount: available } = await db.query(
               `SELECT r.room_id FROM rooms r WHERE r.room_id=$1 AND r.is_active
+                AND ${noClosure("$3", "$4")}
                 AND NOT EXISTS (
                   SELECT 1 FROM bookings b WHERE b.room_id=r.room_id
                   AND b.booking_id<>$2 AND b.status IN ('PENDING','CONFIRMED')

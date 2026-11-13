@@ -114,4 +114,7 @@ SELECT 3999, 1001, 2001, 101, day - 3, day - 1, 650, 1300, 'CONFIRMED',
     now() - interval '5 days', 'SUCCESS', 'TEST-CARE-3999', now() - interval '5 days'
 FROM hotel;
 
+-- An expired hold must not protect inventory, even before its status is swept.
+UPDATE bookings SET created_at = now() - interval '3 minutes' WHERE booking_id = 3002;
+
 \echo 'PASS: schema, mock data, bcrypt, joins, PK/FK ownership, prices, refunds, overlapping/adjacent stays and pending cancellation uniqueness.'

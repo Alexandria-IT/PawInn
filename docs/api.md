@@ -48,7 +48,10 @@ Account and booking owners coordinate pets/bookings foreign keys and active-book
 | --- | --- |
 | GET /api/room-types | Return descriptions, compatible species and base prices |
 | GET /api/rooms | Return room inventory; support optional roomTypeId and active filters |
-| PATCH /api/rooms/:id | Staff changes active/inactive status |
+| GET /api/rooms/inventory | Staff lists each room's reservationStatus (RESERVED, HELD, or null) and holdExpiresAt for payment holds. |
+| POST /api/rooms/:id/closures | Staff schedules a temporary closure with start and reopen dates in Bangkok time. Start must be at least tomorrow. Existing confirmed stays and unexpired holds, including the checkout date, block the closure. |
+| DELETE /api/rooms/:id/closures/:closureId | Staff removes a temporary closure. |
+| PATCH /api/rooms/:id | Staff changes active/inactive status indefinitely. |
 
 Room type: `{id, name, description, species, pricePerNight}`.
 Room: `{id, roomTypeId, roomNumber, isActive}`.

@@ -53,19 +53,24 @@ export function today() {
     day: "2-digit",
   }).format(new Date());
 }
-// Validate the stay dates and the allowed number of nights.
-export function stay(start, end) {
+// Validate ISO dates before comparing them or passing them to PostgreSQL.
+export function dateRange(start, end, label = "start and end") {
   for (const date of [start, end]) {
     if (
       typeof date !== "string" ||
       !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
       date.startsWith("0000")
     )
-      fail(400, "Choose valid check-in and check-out dates.");
+      fail(400, `Choose valid ${label} dates.`);
     const parsed = new Date(date + "T00:00:00Z");
     if (!Number.isFinite(+parsed) || parsed.toISOString().slice(0, 10) !== date)
       fail(400, "Choose valid calendar dates.");
   }
+}
+
+// Validate the stay dates and the allowed number of nights.
+export function stay(start, end) {
+  dateRange(start, end, "check-in and check-out");
   // ISO date-only values use UTC here so the night count is calendar-based.
   const nights = (Date.parse(end) - Date.parse(start)) / millisecondsPerDay;
   if (start < today()) fail(400, "Check-in has passed. Choose today or a later date.");

@@ -92,11 +92,10 @@ const start = days(offset),
 // Fetch availability for the common test dates.
 const availability = () =>
   request("/api/availability?start=" + start + "&end=" + end);
-const initial = (await availability()).find(
-  /* Find the selected dog room type in the availability results. */ (t) =>
-    t.roomTypeId === dog.id,
-).available;
+const availableDogs = async () =>
+  (await availability()).find((type) => type.roomTypeId === dog.id).available;
 if (!write) {
+  assert.ok(Number.isInteger(await availableDogs()));
   console.log(
     "PASS: public UI, room catalog and database-backed availability.",
   );
@@ -106,6 +105,17 @@ if (!write) {
 
 // Exercise inventory, reservation, payment, and cancellation behavior.
 async function verifyBookings() {
+  const staff = await request("/api/auth/login", "POST", {
+    email: "team@pawinn.demo",
+    password: "PawInnDemo123!",
+  });
+  const inventoryPath = "/api/rooms/inventory";
+  // Check the expired hold before the Booking API sweeps it.
+  const inventoryRoom = async (id) =>
+    (await request(inventoryPath, "GET", null, staff.token)).find((entry) => entry.id === String(id));
+  assert.equal((await inventoryRoom(301)).reservationStatus, null);
+  const initial = await availableDogs();
+  await verifyClosures(staff, inventoryRoom);
   assert.ok(
     initial >= 1 && initial <= 15,
     "Use a disposable database with seeded inventory.",
@@ -125,10 +135,6 @@ async function verifyBookings() {
     null,
     400,
   );
-  const staff = await request("/api/auth/login", "POST", {
-    email: "team@pawinn.demo",
-    password: "PawInnDemo123!",
-  });
   const password = "SmokeTestOnly123!";
   const missingPhone = { name: "Smoke Customer", email: randomUUID() + "@example.test", password };
   await request("/api/auth/register", "POST", missingPhone, null, 400);
@@ -177,6 +183,11 @@ async function verifyBookings() {
   };
   const availableCats = await catAvailability();
   const roomPath = "/api/rooms/" + room.id;
+  await request(inventoryPath, "GET", null, null, 401);
+  await request(inventoryPath, "GET", null, people[0].token, 403);
+  assert.equal((await inventoryRoom(room.id)).reservationStatus, null);
+  assert.equal((await inventoryRoom(101)).reservationStatus, "RESERVED");
+  assert.equal((await request("/api/rooms")).find(({ id }) => id === "101").reservationStatus, undefined);
   await request(roomPath, "PATCH", { isActive: false }, null, 401);
   await request(roomPath, "PATCH", { isActive: false }, people[0].token, 403);
   assert.equal(
@@ -259,13 +270,21 @@ async function verifyBookings() {
   });
   assert.equal(duplicate.status, 409);
   assert.match((await duplicate.json()).message, /already has a reservation/i);
+  const catPet = await request("/api/pets", "POST", { name: "Miso", species: "Cat" }, foreign.token, 201);
   const held = await request("/api/bookings", "POST", {
-    petId: foreign.pet.id, roomTypeId: dog.id, start: days(offset + 80), end: days(offset + 82),
+    petId: catPet.id, roomTypeId: cat.id, start: days(offset + 80), end: days(offset + 82),
   }, foreign.token, 201);
+  const heldInventory = await inventoryRoom(held.roomId);
+  assert.equal(heldInventory.reservationStatus, "HELD");
+  await request("/api/rooms/" + held.roomId + "/closures", "POST",
+    { start: held.start, reopen: held.end }, staff.token, 409);
+  await request("/api/rooms/" + held.roomId, "PATCH", { isActive: false }, staff.token, 409);
+  assert.ok(Math.abs(Date.parse(heldInventory.holdExpiresAt) - held.expiresAt) < 1);
   const cancelledHoldPath = "/api/bookings/" + held.id + "/hold";
   await request(cancelledHoldPath, "DELETE", null, p.token, 404);
   assert.equal((await request(cancelledHoldPath, "DELETE", null, foreign.token)).status, "CANCELLED");
   assert.equal((await request(cancelledHoldPath, "DELETE", null, foreign.token)).status, "CANCELLED");
+  assert.equal((await inventoryRoom(held.roomId)).reservationStatus, null);
   await request("/api/bookings/" + held.id + "/checkout", "POST",
     { outcome: "SUCCESS", attemptId: randomUUID() }, foreign.token, 409);
   await request(
@@ -313,6 +332,15 @@ async function verifyBookings() {
     p.token,
   );
   assert.equal(confirmed.status, "CONFIRMED");
+  const closurePath = "/api/rooms/" + confirmed.roomId + "/closures";
+  await request(closurePath, "POST", { start: confirmed.end, reopen: days(offset + 3) }, staff.token, 409);
+  const booked = await request("/api/bookings/" + confirmed.id, "GET", null, p.token);
+  assert.equal(booked.status, "CONFIRMED");
+  assert.equal(booked.roomId, confirmed.roomId);
+  assert.equal(booked.end, confirmed.end);
+  const reservedInventory = await inventoryRoom(confirmed.roomId);
+  assert.equal(reservedInventory.reservationStatus, "RESERVED");
+  assert.equal(reservedInventory.holdExpiresAt, null);
   assert.equal(confirmed.total, dog.pricePerNight * 2);
   const replay = await request(
     "/api/bookings/" + booking.id + "/checkout",
@@ -432,6 +460,45 @@ async function verifyBookings() {
     adminEmail: process.env.PAWINN_TEST_ADMIN_EMAIL,
     adminPassword: process.env.PAWINN_TEST_ADMIN_PASSWORD,
   });
+}
+
+// Check that closures protect future inventory without changing existing stays.
+async function verifyClosures(staff, inventoryRoom) {
+  const bangkokDate = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" });
+  const localDate = (n) => bangkokDate.format(new Date(Date.now() + n * 86_400_000));
+  const path = "/api/rooms/101/closures";
+  const window = { start: localDate(1), reopen: localDate(3) };
+  const availabilityFor = async (from, to) => {
+    const rows = await request("/api/availability?start=" + from + "&end=" + to);
+    return rows.find(({ roomTypeId }) => roomTypeId === dog.id).available;
+  };
+  const before = await availabilityFor(window.start, window.reopen);
+  const reopening = await availabilityFor(window.reopen, localDate(4));
+  await request(path, "POST", window, null, 401);
+  const customer = await request("/api/auth/login", "POST", {
+    email: "jamie@pawinn.demo", password: "PawInnDemo123!",
+  });
+  await request(path, "POST", window, customer.token, 403);
+  await request(path, "POST", { ...window, start: localDate(0) }, staff.token, 400);
+  await request(path, "POST", { ...window, reopen: window.start }, staff.token, 400);
+
+  const closure = await request(path, "POST", window, staff.token, 201);
+  assert.deepEqual((await inventoryRoom(101)).closures, [closure]);
+  assert.equal((await request(path, "POST", window, staff.token, 201)).id, closure.id);
+  await request(path, "POST", { start: localDate(2), reopen: localDate(4) }, staff.token, 409);
+  assert.equal(await availabilityFor(window.start, window.reopen), before - 1);
+  assert.equal(await availabilityFor(window.reopen, localDate(4)), reopening);
+
+  const pet = (await request("/api/pets", "GET", null, customer.token)).find(({ species }) => species === "Dog");
+  const booking = await request("/api/bookings", "POST", {
+    petId: pet.id, roomTypeId: dog.id, start: window.start, end: window.reopen,
+  }, customer.token, 201);
+  assert.notEqual(booking.roomId, "101");
+  await request("/api/bookings/" + booking.id + "/hold", "DELETE", null, customer.token);
+  await request(path + "/" + closure.id, "DELETE", null, staff.token, 204);
+  assert.equal(await availabilityFor(window.start, window.reopen), before);
+  assert.deepEqual((await inventoryRoom(101)).closures, []);
+  console.log("PASS: staff-only planned room closures, date boundaries, availability, allocation and removal.");
 }
 
 // Post text or a photo through the same multipart route the staff dashboard uses.
@@ -571,6 +638,15 @@ async function verifyRescheduling(confirmed, customer, foreign, staff) {
   const reviewPath = path + "/" + pending.reschedule.id;
   const approve = { decision: "APPROVED", notes: "New dates approved" };
   await request(reviewPath, "PATCH", approve, customer.token, 403);
+  const closurePath = "/api/rooms/" + confirmed.roomId + "/closures";
+  const closure = await request(closurePath, "POST",
+    { start: earlier.start, reopen: confirmed.start }, staff.token, 201);
+  await request(reviewPath, "PATCH", approve, staff.token, 409);
+  const stillConfirmed = await request("/api/bookings/" + confirmed.id, "GET", null, customer.token);
+  assert.equal(stillConfirmed.start, confirmed.start);
+  assert.equal(stillConfirmed.roomId, confirmed.roomId);
+  assert.equal(stillConfirmed.reschedule.status, "PENDING");
+  await request(closurePath + "/" + closure.id, "DELETE", null, staff.token, 204);
   const moved = await request(reviewPath, "PATCH", approve, staff.token);
   assert.equal(moved.start, earlier.start);
   assert.equal(moved.end, extended.end);

@@ -3,8 +3,8 @@ import {
   reviewReschedule,
   getBooking,
 } from "../api/bookings.js";
-import { catalog, inventory, setActive } from "../api/rooms.js";
-import { today, toast } from "../helpers.js";
+import { catalog, inventory, setActive, scheduleClosure, removeClosure } from "../api/rooms.js";
+import { addDays, dateLabel, today, toast } from "../helpers.js";
 // Create staff dashboard state and actions.
 export default () => ({
   tab: "requests",
@@ -26,6 +26,16 @@ export default () => ({
   types: [],
   inventoryError: "",
   inventoryLoading: false,
+  closureRoom: null,
+  closureStart: "",
+  closureReopen: "",
+  closureError: "",
+  closureBusy: false,
+  dateLabel,
+  today,
+  addDays,
+  roomRefreshTimer: null,
+  roomRefreshPending: false,
   // Keep the open details current without replacing an in-progress review.
   init() {
     this.$watch("$store.portal.bookings", (bookings) => {
@@ -33,6 +43,14 @@ export default () => ({
         this.detail = bookings.find(({ id }) => id === this.detail.id) ?? null;
       }
     });
+    this.$watch("$store.portal.user?.role", (role) => {
+      if (role === "STAFF") this.loadRooms();
+    });
+    if (this.$store.portal.user?.role === "STAFF") this.loadRooms();
+  },
+  // Cancel scheduled inventory refreshes when the dashboard closes.
+  destroy() {
+    clearTimeout(this.roomRefreshTimer);
   },
   // Read bookings available to a staff session.
   get all() {
@@ -161,33 +179,101 @@ export default () => ({
       this.busy = false;
     }
   },
-  // Fetch inventory and room type names for staff.
-  async loadRooms() {
+  // Refresh after a booking change, including changes made on another device.
+  refreshInventoryFromBooking({ area }) {
+    if (area === "booking" || area === "sync") this.scheduleRoomRefresh(150);
+  },
+  // Coalesce changes and refresh again when the next displayed payment hold ends.
+  scheduleRoomRefresh(delay) {
+    if (this.$store.portal.user?.role !== "STAFF") return;
+    clearTimeout(this.roomRefreshTimer);
+    this.roomRefreshTimer = setTimeout(() => this.loadRooms(true), delay);
+  },
+  // Fetch staff inventory and cache the room type names.
+  async loadRooms(quiet = false) {
+    if (this.$store.portal.user?.role !== "STAFF") return;
+    if (this.inventoryLoading) {
+      this.roomRefreshPending = true;
+      return;
+    }
     this.inventoryLoading = true;
-    this.inventoryError = "";
+    if (!quiet) this.inventoryError = "";
     try {
-      [this.rooms, this.types] = await Promise.all([inventory(), catalog()]);
+      [this.rooms, this.types] = await Promise.all([
+        inventory(),
+        this.types.length ? this.types : catalog(),
+      ]);
+      const nextExpiry = Math.min(...this.rooms
+        .filter((room) => room.holdExpiresAt)
+        .map((room) => Date.parse(room.holdExpiresAt)));
+      if (Number.isFinite(nextExpiry) && !this.roomRefreshPending)
+        this.scheduleRoomRefresh(Math.max(1500, nextExpiry - Date.now() + 250));
     } catch (error) {
-      this.inventoryError = error.message;
+      if (!quiet || !this.rooms.length) this.inventoryError = error.message;
     } finally {
       this.inventoryLoading = false;
+      if (this.roomRefreshPending) {
+        this.roomRefreshPending = false;
+        this.scheduleRoomRefresh(150);
+      }
     }
   },
   // Change one room's active status and update the list.
   async toggleRoom(room) {
-    if (this.busy) return;
+    if (this.busy || (room.isActive && room.reservationStatus)) return;
     this.busy = true;
     this.inventoryError = "";
     try {
       const changed = await setActive(room.id, !room.isActive);
       this.rooms = this.rooms.map(
         /* Replace the saved room in the local list. */ (r) =>
-          r.id === changed.id ? changed : r,
+          r.id === changed.id ? { ...r, ...changed } : r,
       );
     } catch (error) {
       this.inventoryError = error.message;
     } finally {
       this.busy = false;
+      this.scheduleRoomRefresh(150);
+    }
+  },
+  // Default to a one-day closure starting tomorrow.
+  openClosure(room) {
+    this.closureRoom = room;
+    this.closureStart = addDays(today(), 1);
+    this.closureReopen = addDays(this.closureStart, 1);
+    this.closureError = "";
+  },
+  // Schedule the closure and refresh the inventory.
+  async saveClosure() {
+    if (this.closureBusy || !this.closureRoom) return;
+    this.closureBusy = true;
+    this.closureError = "";
+    try {
+      await scheduleClosure(this.closureRoom.id, {
+        start: this.closureStart, reopen: this.closureReopen,
+      });
+      this.closureRoom = null;
+      this.scheduleRoomRefresh(0);
+      toast("Room closure scheduled.");
+    } catch (error) {
+      this.closureError = error.message;
+    } finally {
+      this.closureBusy = false;
+    }
+  },
+  // Remove the closure and let staff know that dates may reopen for booking.
+  async cancelClosure(room, closure) {
+    if (this.closureBusy || !window.confirm("Remove this room closure? Guests may be able to book those dates.")) return;
+    this.closureBusy = true;
+    this.inventoryError = "";
+    try {
+      await removeClosure(room.id, closure.id);
+      toast("Room closure removed.");
+    } catch (error) {
+      this.inventoryError = error.message;
+    } finally {
+      this.closureBusy = false;
+      this.scheduleRoomRefresh(0);
     }
   },
   // Find a room type's display name.
