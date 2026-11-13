@@ -1,4 +1,4 @@
-import { savePet, deletePet } from "../api/account.js";
+import { savePet, deletePet, setPetArchived } from "../api/account.js";
 import { toast } from "../helpers.js";
 // Create an empty pet form with the default species.
 const blank = () => ({
@@ -14,6 +14,7 @@ export default () => ({
   editing: false,
   busy: false,
   deleting: null,
+  restoreError: "",
   form: blank(),
   error: "",
   removeError: "",
@@ -48,18 +49,38 @@ export default () => ({
       this.busy = false;
     }
   },
-  // Delete the selected pet and refresh the list.
+  // Delete an unused pet or archive one with booking history.
   async remove() {
     if (this.busy || !this.deleting) return;
     this.removeError = "";
     this.busy = true;
     try {
-      await deletePet(this.deleting.id);
+      const { id, bookingState } = this.deleting;
+      const archive = bookingState === "HISTORY";
+      if (archive) await setPetArchived(id, true);
+      else await deletePet(id);
       await this.$store.portal.refresh();
       this.deleting = null;
-      toast("Pet profile removed. Booking history is preserved.");
+      toast(archive ? "Pet profile archived." : "Pet profile deleted.");
     } catch (error) {
       this.removeError = error.message;
+      if ([401, 409].includes(error.status)) await this.$store.portal.refresh();
+    } finally {
+      this.busy = false;
+    }
+  },
+  // Return an archived pet to the active profile list and booking pickers.
+  async restore(pet) {
+    if (this.busy) return;
+    this.restoreError = "";
+    this.busy = true;
+    try {
+      await setPetArchived(pet.id, false);
+      await this.$store.portal.refresh();
+      this.filter = "All";
+      toast("Pet profile restored.");
+    } catch (error) {
+      this.restoreError = error.message;
       if (error.status === 401) await this.$store.portal.refresh();
     } finally {
       this.busy = false;

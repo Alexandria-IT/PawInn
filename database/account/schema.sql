@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS pets (
     breed VARCHAR(80),
     birth_date DATE CHECK (birth_date <= CURRENT_DATE),
     care_notes TEXT,
+    archived_at TIMESTAMPTZ,
     -- Lets a booking FK verify that pet_id belongs to its user_id.
     UNIQUE (pet_id, owner_id)
 );

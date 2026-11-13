@@ -32,8 +32,18 @@ export const currentUser = (token) => request("users/me", { token });
 // Save the emergency contact number for the signed-in customer.
 export const updatePhone = (phone) =>
   request("users/me", { method: "PATCH", body: { phone }, token: getToken() });
-// Fetch the signed-in customer's pets.
-export const listPets = (token) => request("pets", { token });
+// Fetch active profiles, with archived profiles included on the management page.
+export const listPets = (token, includeArchived = false) =>
+  request(includeArchived ? "pets?includeArchived=true" : "pets", { token });
+
+// Set whether a pet appears in the active profile list and booking pickers.
+export function setPetArchived(id, archived) {
+  return request("pets/" + encodeURIComponent(id) + "/archive", {
+    method: "PATCH",
+    body: { archived },
+    token: getToken(),
+  });
+}
 // Send only supported pet fields and choose create or update.
 export function savePet(form) {
   const { name, species, breed, birthDate, notes } = form;

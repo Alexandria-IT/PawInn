@@ -474,9 +474,40 @@ async function verifyBookings() {
   await postUpdate("3999", staff.token, "Care history test update.", null);
   await verifyCare({ request, staff, customer: careCustomer, foreign, booking: { id: "3999" }, origin });
   await verifyAttendancePolicy(staff, careCustomer, inventoryRoom);
+  await verifyPetArchive(careCustomer.token, foreign.token, { start: days(offset + 100), end: days(offset + 101) });
 
 }
 
+
+// Check pet deletion, active booking protection, and history after archiving.
+async function verifyPetArchive(token, foreignToken, dates) {
+  const unused = await request("/api/pets", "POST", { name: "Unused profile", species: "Dog" }, token, 201);
+  const unusedPath = "/api/pets/" + unused.id;
+  await request(unusedPath + "/archive", "PATCH", { archived: true }, token, 409);
+  await request(unusedPath, "DELETE", null, token, 204);
+  await request(unusedPath, "GET", null, token, 404);
+
+  // Mochi still has a future stay. Miso has only cancelled stays.
+  await request("/api/pets/2001/archive", "PATCH", { archived: true }, token, 409);
+  const path = "/api/pets/2002";
+  const draft = { petId: "2002", roomTypeId: "3", ...dates };
+  const hold = await request("/api/bookings", "POST", draft, token, 201);
+  await request(path + "/archive", "PATCH", { archived: true }, token, 409);
+  await request("/api/bookings/" + hold.id + "/hold", "DELETE", null, token);
+  await request(path, "DELETE", null, token, 409);
+  await request(path + "/archive", "PATCH", { archived: true }, foreignToken, 404);
+  await request(path + "/archive", "PATCH", { archived: true }, token, 204);
+  await request(path + "/archive", "PATCH", { archived: true }, token, 204);
+  assert.ok(!(await request("/api/pets", "GET", null, token)).some((pet) => pet.id === "2002"));
+  assert.ok((await request("/api/pets?includeArchived=true", "GET", null, token))
+    .find((pet) => pet.id === "2002").archivedAt);
+  assert.equal((await request("/api/bookings/3998", "GET", null, token)).petId, "2002");
+  await request("/api/bookings", "POST", draft, token, 409);
+  await request(path + "/archive", "PATCH", { archived: false }, token, 204);
+  assert.ok((await request("/api/pets", "GET", null, token)).some((pet) => pet.id === "2002"));
+  await request("/api/bookings", "POST", draft, token, 201);
+  console.log("PASS: unused pet deletion, active booking protection, archival, and restoration.");
+}
 
 // Check the no-show release, overdue occupancy, and retry-safe late pickup fee.
 async function verifyAttendancePolicy(staff, customer, inventoryRoom) {

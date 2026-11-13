@@ -2,7 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { rateLimit } from "express-rate-limit";
-import { petFields, userFields, updatePet } from "./db.js";
+import { listOwnedPets, petFields, setPetArchived, userFields, updatePet } from "./db.js";
 import { RequestError, fail, send, userDto, fields, clean, credentials, parseId } from "./http.js";
 
 const tokenOptions = { issuer: "pawinn-account", audience: "pawinn" };
@@ -17,6 +17,8 @@ const petDto = (r) => ({
   breed: r.breed,
   birthDate: r.birth_date,
   notes: r.care_notes,
+  archivedAt: r.archived_at,
+  ...(r.booking_state && { bookingState: r.booking_state }),
 });
 
 // Validate a new pet or a partial update.
@@ -204,10 +206,8 @@ export function accountRoutes(pool, secret, allowFixtures) {
   router.get(
     "/pets",
     /* List pets owned by this customer. */ async (req, res) => {
-      const { rows } = await pool.query(
-        "SELECT " + petFields + " FROM pets WHERE owner_id=$1 ORDER BY pet_id",
-        [req.accountUser.user_id],
-      );
+      const includeArchived = req.query.includeArchived === "true";
+      const { rows } = await listOwnedPets(pool, req.accountUser.user_id, includeArchived);
       send(res, rows.map(petDto));
     },
   );
@@ -276,6 +276,18 @@ export function accountRoutes(pool, secret, allowFixtures) {
       send(res, petDto(pet));
     },
   );
+  router.patch(
+    "/pets/:id/archive",
+    /* Archive an owned pet with finished stays, or restore its profile. */ async (req, res) => {
+      const { archived } = fields(req.body, ["archived"]);
+      if (typeof archived !== "boolean") fail(400, "Choose whether to archive or restore the pet.");
+      const result = await setPetArchived(pool, req.petId, req.accountUser.user_id, archived);
+      if (result === "MISSING") fail(404, "Pet not found.");
+      if (result === "ACTIVE") fail(409, "This pet has a pending, upcoming, or ongoing booking. Resolve it before archiving.");
+      if (result === "NO_HISTORY") fail(409, "This pet has no booking history. You can delete its profile instead.");
+      res.status(204).end();
+    },
+  );
   router.delete(
     "/pets/:id",
     /* Delete an owned pet if no booking references it. */ async (req, res) => {
@@ -288,7 +300,7 @@ export function accountRoutes(pool, secret, allowFixtures) {
         res.status(204).end();
       } catch (error) {
         if (error.code === "23503")
-          fail(409, "This pet has booking history and cannot be removed.");
+          fail(409, "This pet has booking history. Archive its profile when its bookings are resolved.");
         throw error;
       }
     },

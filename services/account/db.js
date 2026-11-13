@@ -62,6 +62,56 @@ export async function prepareAccount(pool) {
   }
 }
 
+// Match Booking's two-minute hold and Bangkok calendar date.
+const activePetBooking = `status = 'CONFIRMED' OR (
+  status = 'PENDING'
+  AND created_at > statement_timestamp() - interval '2 minutes'
+  AND check_in_date >= (statement_timestamp() AT TIME ZONE 'Asia/Bangkok')::date
+)`;
+
+// Return the booking state needed to choose a pet management action.
+export function listOwnedPets(pool, owner, includeArchived) {
+  return pool.query(
+    `SELECT ${petFields}, history.state AS booking_state
+     FROM pets p
+     CROSS JOIN LATERAL (
+       SELECT CASE WHEN bool_or(${activePetBooking}) THEN 'ACTIVE'
+                   WHEN count(*) > 0 THEN 'HISTORY' ELSE 'NONE' END AS state
+       FROM bookings WHERE pet_id=p.pet_id
+     ) history
+     WHERE owner_id=$1 AND ($2::boolean OR archived_at IS NULL) ORDER BY pet_id`,
+    [owner, includeArchived],
+  );
+}
+
+// Archive or restore an owned pet while serializing against booking changes.
+export function setPetArchived(pool, id, owner, archived) {
+  return accountTransaction(pool, async (db) => {
+    // Take Booking's inventory lock before taking the pet row lock.
+    await db.query("SELECT pg_advisory_xact_lock(42001)");
+    const { rows: [pet] } = await db.query(
+      "SELECT archived_at FROM pets WHERE pet_id=$1 AND owner_id=$2 FOR UPDATE",
+      [id, owner],
+    );
+    if (!pet) return "MISSING";
+    if (Boolean(pet.archived_at) === archived) return "OK";
+    if (archived) {
+      const { rows: [history] } = await db.query(
+        `SELECT count(*) > 0 AS has_history, bool_or(${activePetBooking}) AS active
+         FROM bookings WHERE pet_id=$1`,
+        [id],
+      );
+      if (history.active) return "ACTIVE";
+      if (!history.has_history) return "NO_HISTORY";
+    }
+    await db.query(
+      "UPDATE pets SET archived_at=CASE WHEN $3::boolean THEN now() ELSE NULL END WHERE pet_id=$1 AND owner_id=$2",
+      [id, owner, archived],
+    );
+    return "OK";
+  });
+}
+
 // Update an owned pet while checking active reservations.
 export async function updatePet(pool, id, owner, changes) {
   const db = await pool.connect();
@@ -115,5 +165,5 @@ export async function updatePet(pool, id, owner, changes) {
 }
 
 export const petFields =
-  "pet_id, owner_id, name, species, breed, to_char(birth_date, 'YYYY-MM-DD') AS birth_date, care_notes";
+  "pet_id, owner_id, name, species, breed, to_char(birth_date, 'YYYY-MM-DD') AS birth_date, care_notes, archived_at";
 export const userFields = "user_id, full_name, email, phone, role, account_status, session_version";

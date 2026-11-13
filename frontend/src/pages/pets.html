@@ -112,12 +112,15 @@
                   >Plan a little getaway ↗</a
                 ><button
                   class="text-xs muted underline underline-offset-4"
+                  x-show="pet.bookingState !== 'ACTIVE'"
                   @click="deleting=pet;removeError=''"
-                  :aria-label="'Remove '+pet.name"
-                >
-                  Remove
-                </button>
+                  :aria-label="(pet.bookingState === 'HISTORY' ? 'Archive ' : 'Delete ') + pet.name"
+                  x-text="pet.bookingState === 'HISTORY' ? 'Archive' : 'Delete'"
+                ></button>
               </div>
+              <p class="text-xs muted mt-2" x-show="pet.bookingState === 'ACTIVE'">
+                Resolve the active booking before archiving this profile.
+              </p>
             </article></template
           >
         </div>
@@ -132,6 +135,20 @@
           </p>
           <button class="btn btn-primary" @click="open()">Add a pet →</button>
         </div>
+        <section class="mt-8" x-show="$store.portal.archivedPets.length">
+          <h2 class="text-2xl mb-2">Archived pets</h2>
+          <p class="text-sm muted mb-4">Restore a profile to book another stay. Past bookings and care reports remain available.</p>
+          <p class="error mb-4" x-show="restoreError" x-text="restoreError" role="alert"></p>
+          <ul class="space-y-2">
+            <template x-for="pet in $store.portal.archivedPets" :key="pet.id">
+              <li class="card p-4 flex flex-wrap items-center justify-between gap-3">
+                <span class="font-semibold" x-text="pet.name + ' · ' + pet.species"></span>
+                <button type="button" class="btn btn-outline btn-sm" @click="restore(pet)"
+                  :disabled="busy" :aria-label="'Restore ' + pet.name">Restore</button>
+              </li>
+            </template>
+          </ul>
+        </section>
         <div class="notice mt-8 flex items-start gap-3">
           <span aria-hidden="true">♡</span>
           <p>
@@ -236,7 +253,7 @@
           aria-labelledby="remove-title"
         >
           <div class="modal-title">
-            <h2 id="remove-title">Remove this profile?</h2>
+            <h2 id="remove-title" x-text="deleting?.bookingState === 'HISTORY' ? 'Archive this profile?' : 'Delete this profile?'"></h2>
             <button
               class="icon-btn shrink-0"
               @click="deleting=null"
@@ -245,10 +262,12 @@
               ✕
             </button>
           </div>
-          <p class="muted text-sm">
-            This removes <strong x-text="deleting?.name"></strong> from your
-            pets. Pets with booking history cannot be removed from a connected
-            account.
+          <p class="muted text-sm" x-show="deleting?.bookingState === 'HISTORY'">
+            <strong x-text="deleting?.name"></strong> will be hidden from booking.
+            You can restore the profile anytime. Past bookings and care reports will stay available.
+          </p>
+          <p class="muted text-sm" x-show="deleting?.bookingState !== 'HISTORY'">
+            This permanently deletes <strong x-text="deleting?.name"></strong>'s profile.
           </p>
           <p
             class="error mt-4"
@@ -259,9 +278,8 @@
           <div class="flex justify-end gap-3 mt-6">
             <button class="btn btn-outline" @click="deleting=null">
               Keep profile</button
-            ><button class="btn btn-primary" @click="remove()" :disabled="busy">
-              Remove profile
-            </button>
+            ><button class="btn btn-primary" @click="remove()" :disabled="busy"
+              x-text="deleting?.bookingState === 'HISTORY' ? 'Archive profile' : 'Delete profile'"></button>
           </div>
         </section>
       </div>

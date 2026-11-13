@@ -320,10 +320,11 @@ export function routes(router, pool, auth) {
           const {
             rows: [pet],
           } = await db.query(
-            "SELECT species FROM pets WHERE pet_id=$1 AND owner_id=$2 FOR UPDATE",
+            "SELECT species, archived_at FROM pets WHERE pet_id=$1 AND owner_id=$2 FOR UPDATE",
             [requestedPetId, owner],
           );
           if (!pet) fail(404, "Pet not found.");
+          if (pet.archived_at) fail(409, "Restore this pet profile before booking a stay.");
           const {
             rows: [roomType],
           } = await db.query(
@@ -388,9 +389,10 @@ export function routes(router, pool, auth) {
         if (booking.status !== "PENDING" || booking.expiresAt <= Date.now())
           fail(409, "This hold cannot be edited. Start a new reservation if your hold expired.");
         const { rows: [pet] } = await db.query(
-          "SELECT species FROM pets WHERE pet_id=$1 AND owner_id=$2 FOR UPDATE", [petKey, owner],
+          "SELECT species, archived_at FROM pets WHERE pet_id=$1 AND owner_id=$2 FOR UPDATE", [petKey, owner],
         );
         if (!pet) fail(404, "Pet not found.");
+        if (pet.archived_at) fail(409, "Restore this pet profile before booking a stay.");
         const { rows: [type] } = await db.query(
           "SELECT species, price_per_night FROM room_types WHERE room_type_id=$1", [typeKey],
         );

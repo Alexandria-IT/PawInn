@@ -5,6 +5,7 @@ import { listBookings, listPetUpdates } from "../api/bookings.js";
 export default () => ({
   user: null,
   pets: [],
+  archivedPets: [],
   bookings: [],
   ready: false,
   error: "",
@@ -87,6 +88,7 @@ export default () => ({
         this.user = null;
         this.setPetUpdateUser(null);
         this.pets = [];
+        this.archivedPets = [];
         this.bookings = [];
         return;
       }
@@ -101,11 +103,11 @@ export default () => ({
         "staff-dashboard",
       ].includes(document.body.dataset.page);
       const [pets, bookings] = await Promise.all([
-        user.role === "CUSTOMER" ? listPets(token) : [],
+        user.role === "CUSTOMER" ? listPets(token, document.body.dataset.page === "pets") : [],
         needsBookings ? listBookings() : [],
       ]);
       if (rev !== this.revision) return;
-      this.pets = pets.map(
+      const profiles = pets.map(
         /* Supply the display defaults expected by pet forms. */ (p) => ({
           ...p,
           avatar: p.species === "Cat" ? "cat" : "dog",
@@ -114,6 +116,8 @@ export default () => ({
           notes: p.notes ?? "",
         }),
       );
+      this.pets = profiles.filter((pet) => !pet.archivedAt);
+      this.archivedPets = profiles.filter((pet) => pet.archivedAt);
       this.bookings = bookings;
     } catch (error) {
       if (rev !== this.revision) return;
@@ -122,6 +126,7 @@ export default () => ({
         this.user = null;
         this.setPetUpdateUser(null);
         this.pets = [];
+        this.archivedPets = [];
         this.bookings = [];
         this.error = "Your session ended. Sign in again.";
       } else this.error = error.message;

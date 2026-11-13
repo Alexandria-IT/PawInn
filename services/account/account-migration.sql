@@ -1,4 +1,5 @@
 -- Upgrade Account on an existing volume before accepting requests.
+ALTER TABLE pets ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
 DO $migration$
 BEGIN
     IF NOT EXISTS (
