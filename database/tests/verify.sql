@@ -22,6 +22,14 @@ BEGIN
      OR (SELECT count(*) FROM booking_logs WHERE log_id BETWEEN 5001 AND 5018) <> 18 THEN
     RAISE EXCEPTION 'Expected complete demo users, pets, rooms, bookings, cancellations and logs';
   END IF;
+  IF (SELECT count(*) FROM bookings
+      WHERE (booking_id IN (3996, 3998) AND arrived_at IS NULL)
+         OR (booking_id IN (3997, 3999) AND arrived_at IS NOT NULL AND picked_up_at IS NULL)) <> 4
+     OR NOT EXISTS (SELECT 1 FROM cancellation_requests WHERE booking_id = 3998 AND status = 'PENDING')
+     OR NOT EXISTS (SELECT 1 FROM bookings
+                    WHERE booking_id = 3002 AND created_at <= now() - interval '2 minutes') THEN
+    RAISE EXCEPTION 'Expected timing demos and expired hold from the initial seed';
+  END IF;
   IF EXISTS (SELECT 1 FROM room_types t LEFT JOIN rooms r USING (room_type_id)
              WHERE t.room_type_id BETWEEN 1 AND 3 GROUP BY t.room_type_id HAVING count(r.room_id) <> 5) THEN
     RAISE EXCEPTION 'Expected five physical rooms per room type';
@@ -33,13 +41,13 @@ BEGIN
   IF (SELECT count(*) FROM bookings b JOIN users u USING (user_id)
       JOIN pets p ON p.pet_id = b.pet_id AND p.owner_id = b.user_id
       JOIN rooms r USING (room_id) JOIN room_types t USING (room_type_id)
-      WHERE b.booking_id BETWEEN 3001 AND 3006 AND p.species = t.species
-      AND b.total_price = b.nightly_rate * (b.check_out_date - b.check_in_date)) <> 6 THEN
+      WHERE (b.booking_id BETWEEN 3001 AND 3006 OR b.booking_id BETWEEN 3996 AND 3999)
+      AND p.species = t.species
+      AND b.total_price = b.nightly_rate * (b.check_out_date - b.check_in_date)) <> 10 THEN
     RAISE EXCEPTION 'Demo joins, ownership, compatible species or price snapshots are inconsistent';
   END IF;
-  IF (SELECT count(DISTINCT status) FROM bookings WHERE booking_id BETWEEN 3001 AND 3006) <> 4
-     OR (SELECT count(DISTINCT status) FROM cancellation_requests WHERE cancellation_request_id BETWEEN 4001 AND 4003) <> 3 THEN
-    RAISE EXCEPTION 'Expected all booking and cancellation status examples';
+  IF (SELECT count(DISTINCT status) FROM cancellation_requests WHERE cancellation_request_id BETWEEN 4001 AND 4003) <> 3 THEN
+    RAISE EXCEPTION 'Expected all cancellation status examples';
   END IF;
 END $$;
 
@@ -106,26 +114,4 @@ END $$;
 
 ROLLBACK;
 
--- Historical stays for on-time pickup, missed arrival, and late pickup tests.
-WITH hotel AS (SELECT (now() AT TIME ZONE 'Asia/Bangkok')::date AS day)
-INSERT INTO bookings (booking_id, user_id, pet_id, room_id, check_in_date, check_out_date,
-    nightly_rate, total_price, status, created_at, payment_status, payment_reference, paid_at, arrived_at)
-SELECT fixture.booking_id, pets.owner_id, fixture.pet_id, fixture.room_id, day + fixture.start_offset, day + fixture.end_offset,
-    fixture.rate, fixture.rate * (fixture.end_offset - fixture.start_offset), 'CONFIRMED',
-    now() - interval '5 days', 'SUCCESS', 'TEST-CARE-' || fixture.booking_id, now() - interval '5 days',
-    CASE WHEN fixture.attended THEN ((day - 3) + time '00:30') AT TIME ZONE 'Asia/Bangkok' END
-FROM hotel CROSS JOIN (VALUES
-    (3999, 2001, 101, -3, -1, 650, TRUE),
-    (3998, 2002, 305, -3,  1, 750, FALSE),
-    (3997, 2003, 205, -3, -1, 950, TRUE),
-    (3996, 2004, 304,  0,  1, 750, FALSE)
-) AS fixture(booking_id, pet_id, room_id, start_offset, end_offset, rate, attended)
-JOIN pets ON pets.pet_id = fixture.pet_id;
-
-INSERT INTO cancellation_requests (booking_id, reason)
-VALUES (3998, 'Pending request on a missed stay');
-
--- An expired hold must not protect inventory, even before its status is swept.
-UPDATE bookings SET created_at = now() - interval '3 minutes' WHERE booking_id = 3002;
-
-\echo 'PASS: schema, mock data, bcrypt, joins, PK/FK ownership, prices, refunds, overlapping/adjacent stays and pending cancellation uniqueness.'
+\echo 'PASS: schema, mock data, timing fixtures, bcrypt, joins, PK/FK ownership, prices, refunds, overlapping/adjacent stays and pending cancellation uniqueness.'

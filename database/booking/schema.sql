@@ -23,6 +23,11 @@ CREATE TABLE IF NOT EXISTS bookings (
     refund_amount NUMERIC(10,2) CHECK (refund_amount >= 0 AND refund_amount <= total_price),
     refund_reference VARCHAR(100) UNIQUE,
     refunded_at TIMESTAMPTZ,
+    arrived_at TIMESTAMPTZ,
+    picked_up_at TIMESTAMPTZ
+        CHECK (picked_up_at IS NULL OR (arrived_at IS NOT NULL AND picked_up_at >= arrived_at)),
+    no_show_at TIMESTAMPTZ,
+    late_pickup_fee NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (late_pickup_fee >= 0),
 
     -- The composite key ensures the customer owns the pet on the reservation.
     FOREIGN KEY (pet_id, user_id) REFERENCES pets(pet_id, owner_id) ON DELETE RESTRICT,
